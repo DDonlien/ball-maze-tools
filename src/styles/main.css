@@ -1,0 +1,504 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  background: #f8f8f6;
+  color: #2c3230;
+  font-family: "Arial Narrow", "Roboto Condensed", "DIN Condensed", ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: 80px 300px minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  background: #fbfbf8;
+}
+
+.rail-nav {
+  display: grid;
+  grid-template-rows: 56px 24px 24px 80px 1fr 64px;
+  width: 80px;
+  min-width: 80px;
+  border-right: 1px solid #deded8;
+  background: #fbfbf8;
+}
+
+.mini-brand {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 2px;
+  height: 56px;
+  border-bottom: 1px solid #deded8;
+}
+
+.mini-brand strong {
+  font-size: 10px;
+  letter-spacing: 2px;
+}
+
+.mini-brand span {
+  font-size: 9px;
+  color: #68706c;
+}
+
+.lang,
+.nav-tile,
+.nav-link {
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-bottom: 1px solid #deded8;
+  background: transparent;
+  color: #2c3230;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.lang {
+  min-height: 24px;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.lang.is-active,
+.nav-tile.is-active {
+  color: #fff;
+  background: #28302d;
+}
+
+.nav-tile {
+  align-content: center;
+  gap: 7px;
+  min-height: 80px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.nav-link {
+  align-self: end;
+  gap: 7px;
+  height: 64px;
+  border-top: 1px solid #deded8;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.icon {
+  display: block;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.panel {
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  background: #fbfbf8;
+  border-right: 1px solid #deded8;
+  overflow: auto;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 80px;
+  padding: 0 18px;
+  border-bottom: 1px solid #deded8;
+}
+
+.brand-mark {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #2c3230;
+  background:
+    linear-gradient(90deg, transparent 47%, #2c3230 47% 53%, transparent 53%),
+    linear-gradient(0deg, transparent 47%, #2c3230 47% 53%, transparent 53%);
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 20px;
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: 1px;
+}
+
+h2 {
+  font-size: 12px;
+  color: #2c3230;
+  text-transform: uppercase;
+  font-weight: 900;
+  letter-spacing: 1px;
+}
+
+.brand p {
+  margin-top: 6px;
+  font-size: 10px;
+  color: #68706c;
+  letter-spacing: 1.2px;
+}
+
+.section {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  background: #fbfbf8;
+  border-bottom: 1px solid #deded8;
+}
+
+.section-head,
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.field span,
+.stats-grid span,
+.detail-row span,
+.muted {
+  font-size: 10px;
+  color: #68706c;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+}
+
+input {
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  padding: 0 10px;
+  color: #2c3230;
+  background: #fff;
+  border: 1px solid #d9d9d3;
+  border-radius: 0;
+  outline: none;
+}
+
+input:focus {
+  border-color: #2856ff;
+  box-shadow: inset 0 -2px 0 #2856ff;
+}
+
+.triple {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+button {
+  min-height: 38px;
+  padding: 0 13px;
+  color: #2c3230;
+  background: #fbfbf8;
+  border: 1px solid #d9d9d3;
+  border-radius: 0;
+  cursor: pointer;
+  text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.8px;
+}
+
+button:hover {
+  border-color: #2c3230;
+  background: #fff;
+}
+
+.primary {
+  color: #fff;
+  background: #2856ff;
+  border-color: #2856ff;
+}
+
+.primary:hover {
+  color: #fff;
+  background: #1d43cc;
+  border-color: #1d43cc;
+}
+
+.drop {
+  display: grid;
+  gap: 6px;
+  min-height: 104px;
+  padding: 18px 16px;
+  border-bottom: 1px solid #deded8;
+  color: #68706c;
+  background-image: radial-gradient(#d9d9d3 0.8px, transparent 0.8px);
+  background-size: 18px 18px;
+}
+
+.drop strong {
+  color: #2c3230;
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+
+.drop span {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.drop.is-over {
+  background-color: #edf1ff;
+  outline: 2px solid #2856ff;
+  outline-offset: -2px;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-top: 1px solid #deded8;
+  border-left: 1px solid #deded8;
+}
+
+.stats-grid div {
+  display: grid;
+  gap: 4px;
+  min-height: 72px;
+  padding: 10px;
+  background: #fff;
+  border-right: 1px solid #deded8;
+  border-bottom: 1px solid #deded8;
+}
+
+.stats-grid strong {
+  font-size: 28px;
+  line-height: 1;
+  color: #2856ff;
+  font-weight: 900;
+}
+
+.details {
+  min-height: 178px;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid #deded8;
+}
+
+.detail-row strong {
+  min-width: 0;
+  text-align: right;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+  color: #2c3230;
+}
+
+.viewport {
+  position: relative;
+  display: grid;
+  grid-template-rows: 80px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(#d9d9d3 0.8px, transparent 0.8px),
+    #fbfbf8;
+  background-size: 20px 20px;
+}
+
+.topbar {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  min-height: 80px;
+  background: rgba(251, 251, 248, 0.92);
+  border-bottom: 1px solid #deded8;
+}
+
+.search-label {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 160px;
+  padding: 0 18px;
+  color: #9aa09c;
+  border-right: 1px solid #deded8;
+  font-size: 12px;
+}
+
+.filter-chip,
+.reset-chip {
+  min-width: 92px;
+  height: 80px;
+  border-width: 0 1px 0 0;
+  border-color: #deded8;
+  background: transparent;
+  color: #2c3230;
+  white-space: nowrap;
+}
+
+.filter-chip span {
+  margin-left: 8px;
+  color: #68706c;
+}
+
+.reset-chip {
+  min-width: 90px;
+  margin-left: auto;
+  border-left: 1px solid #deded8;
+  border-right: 0;
+}
+
+.viewer {
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.viewer canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  background: transparent;
+}
+
+.log-dock {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  width: min(560px, calc(100% - 32px));
+  max-height: 32vh;
+  overflow: hidden;
+  background: rgba(251, 251, 248, 0.92);
+  border: 1px solid #d9d9d3;
+}
+
+.log-head {
+  padding: 10px 12px;
+  color: #2c3230;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  border-bottom: 1px solid #deded8;
+}
+
+.log-content {
+  max-height: calc(32vh - 40px);
+  overflow: auto;
+  padding: 8px 12px 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.log-line.success {
+  color: #167a44;
+}
+
+.log-line.fail,
+.log-line.warn {
+  color: #c0362c;
+}
+
+.log-line.info {
+  color: #68706c;
+}
+
+@media (max-width: 900px) {
+  body {
+    overflow: auto;
+  }
+
+  .shell {
+    grid-template-columns: 56px 1fr;
+    grid-template-rows: auto 70vh;
+    min-height: 100%;
+  }
+
+  .rail-nav {
+    width: 56px;
+    min-width: 56px;
+  }
+
+  .panel {
+    border-right: 0;
+  }
+
+  .viewport {
+    grid-column: 1 / -1;
+    grid-template-rows: 56px minmax(0, 1fr);
+  }
+
+  .topbar {
+    min-height: 56px;
+    overflow: hidden;
+  }
+
+  .filter-chip,
+  .reset-chip {
+    min-width: 64px;
+    height: 56px;
+    padding: 0 8px;
+    font-size: 9px;
+  }
+
+  .search-label {
+    min-width: 70px;
+    padding: 0 10px;
+    font-size: 11px;
+  }
+
+  .reset-chip {
+    min-width: 54px;
+  }
+
+  .log-dock {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    width: auto;
+    max-height: 24vh;
+  }
+}
