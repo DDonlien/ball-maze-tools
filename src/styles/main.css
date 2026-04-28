@@ -14,7 +14,8 @@ body {
   overflow: hidden;
   background: #f8f8f6;
   color: #2c3230;
-  font-family: "Arial Narrow", "Roboto Condensed", "DIN Condensed", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: "JetBrains Mono", "Maple Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
   letter-spacing: 0;
 }
 
@@ -25,19 +26,28 @@ input {
 
 .shell {
   display: grid;
-  grid-template-columns: 80px 300px minmax(0, 1fr);
+  grid-template-columns: 56px 300px minmax(0, 1fr);
   width: 100%;
   height: 100%;
   background: #fbfbf8;
 }
 
 .rail-nav {
-  display: grid;
-  grid-template-rows: 56px 24px 24px 80px 1fr 64px;
-  width: 80px;
-  min-width: 80px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 56px;
+  min-width: 56px;
   border-right: 1px solid #deded8;
   background: #fbfbf8;
+}
+
+.rail-nav-top {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  width: 100%;
 }
 
 .mini-brand {
@@ -45,8 +55,9 @@ input {
   place-items: center;
   align-content: center;
   gap: 2px;
-  height: 56px;
+  height: 52px;
   border-bottom: 1px solid #deded8;
+  width: 100%;
 }
 
 .mini-brand strong {
@@ -60,7 +71,6 @@ input {
 }
 
 .lang,
-.nav-tile,
 .nav-link {
   display: grid;
   place-items: center;
@@ -70,34 +80,27 @@ input {
   color: #2c3230;
   text-decoration: none;
   text-transform: uppercase;
+  width: 100%;
 }
 
 .lang {
-  min-height: 24px;
+  min-height: 28px;
   font-size: 10px;
   font-weight: 800;
+  cursor: pointer;
 }
 
-.lang.is-active,
-.nav-tile.is-active {
+.lang.is-active {
   color: #fff;
   background: #28302d;
-}
-
-.nav-tile {
-  align-content: center;
-  gap: 7px;
-  min-height: 80px;
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 1px;
 }
 
 .nav-link {
   align-self: end;
   gap: 7px;
-  height: 64px;
+  height: 52px;
   border-top: 1px solid #deded8;
+  border-bottom: 0;
   font-size: 9px;
   font-weight: 800;
 }
@@ -112,18 +115,17 @@ input {
   z-index: 2;
   display: flex;
   flex-direction: column;
-  gap: 0;
   min-width: 0;
   background: #fbfbf8;
   border-right: 1px solid #deded8;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: 14px;
-  min-height: 80px;
+  min-height: 52px;
   padding: 0 18px;
   border-bottom: 1px solid #deded8;
 }
@@ -135,6 +137,7 @@ input {
   background:
     linear-gradient(90deg, transparent 47%, #2c3230 47% 53%, transparent 53%),
     linear-gradient(0deg, transparent 47%, #2c3230 47% 53%, transparent 53%);
+  flex-shrink: 0;
 }
 
 h1,
@@ -144,14 +147,14 @@ p {
 }
 
 h1 {
-  font-size: 20px;
+  font-size: 18px;
   line-height: 1;
   font-weight: 900;
   letter-spacing: 1px;
 }
 
 h2 {
-  font-size: 12px;
+  font-size: 11px;
   color: #2c3230;
   text-transform: uppercase;
   font-weight: 900;
@@ -159,18 +162,27 @@ h2 {
 }
 
 .brand p {
-  margin-top: 6px;
-  font-size: 10px;
+  margin-top: 4px;
+  font-size: 9px;
   color: #68706c;
   letter-spacing: 1.2px;
 }
 
+.panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
 .section {
   display: grid;
-  gap: 12px;
-  padding: 16px;
+  gap: 10px;
+  padding: 14px 16px;
   background: #fbfbf8;
   border-bottom: 1px solid #deded8;
+  flex-shrink: 0;
 }
 
 .section-head,
@@ -188,7 +200,7 @@ h2 {
 
 .field {
   display: grid;
-  gap: 6px;
+  gap: 5px;
 }
 
 .field span,
@@ -204,7 +216,7 @@ h2 {
 input {
   width: 100%;
   min-width: 0;
-  height: 38px;
+  height: 34px;
   padding: 0 10px;
   color: #2c3230;
   background: #fff;
@@ -221,11 +233,11 @@ input:focus {
 .triple {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 button {
-  min-height: 38px;
+  min-height: 34px;
   padding: 0 13px;
   color: #2c3230;
   background: #fbfbf8;
@@ -233,7 +245,7 @@ button {
   border-radius: 0;
   cursor: pointer;
   text-transform: uppercase;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 900;
   letter-spacing: 0.8px;
 }
@@ -257,19 +269,20 @@ button:hover {
 
 .drop {
   display: grid;
-  gap: 6px;
-  min-height: 104px;
-  padding: 18px 16px;
+  gap: 5px;
+  min-height: 90px;
+  padding: 14px 16px;
   border-bottom: 1px solid #deded8;
   color: #68706c;
   background-image: radial-gradient(#d9d9d3 0.8px, transparent 0.8px);
   background-size: 18px 18px;
+  flex-shrink: 0;
 }
 
 .drop strong {
   color: #2c3230;
   text-transform: uppercase;
-  font-size: 12px;
+  font-size: 11px;
   letter-spacing: 1px;
 }
 
@@ -294,37 +307,40 @@ button:hover {
 
 .stats-grid div {
   display: grid;
-  gap: 4px;
-  min-height: 72px;
-  padding: 10px;
+  gap: 3px;
+  min-height: 64px;
+  padding: 8px 10px;
   background: #fff;
   border-right: 1px solid #deded8;
   border-bottom: 1px solid #deded8;
 }
 
 .stats-grid strong {
-  font-size: 28px;
+  font-size: 24px;
   line-height: 1;
   color: #2856ff;
   font-weight: 900;
 }
 
 .details {
-  min-height: 178px;
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .detail-row {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  padding: 9px 0;
+  padding: 7px 0;
   border-bottom: 1px solid #deded8;
 }
 
 .detail-row strong {
   min-width: 0;
   text-align: right;
-  font-size: 11px;
+  font-size: 10px;
   overflow-wrap: anywhere;
   color: #2c3230;
 }
@@ -415,7 +431,7 @@ button:hover {
 }
 
 .log-head {
-  padding: 10px 12px;
+  padding: 9px 12px;
   color: #2c3230;
   font-size: 10px;
   font-weight: 900;
@@ -425,10 +441,10 @@ button:hover {
 }
 
 .log-content {
-  max-height: calc(32vh - 40px);
+  max-height: calc(32vh - 38px);
   overflow: auto;
-  padding: 8px 12px 12px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  padding: 7px 12px 10px;
+  font-family: "JetBrains Mono", "Maple Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px;
   line-height: 1.55;
 }
@@ -455,15 +471,6 @@ button:hover {
     grid-template-columns: 56px 1fr;
     grid-template-rows: auto 70vh;
     min-height: 100%;
-  }
-
-  .rail-nav {
-    width: 56px;
-    min-width: 56px;
-  }
-
-  .panel {
-    border-right: 0;
   }
 
   .viewport {

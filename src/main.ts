@@ -14,15 +14,13 @@ if (!app) throw new Error("Missing #app");
 app.innerHTML = `
   <main class="shell">
     <nav class="rail-nav">
-      <div class="mini-brand">
-        <strong>MAZE</strong>
-        <span>v1.0.0</span>
-      </div>
-      <button class="lang is-active">中</button>
-      <button class="lang">EN</button>
-      <div class="nav-tile is-active">
-        <span class="icon">▦</span>
-        <span>LAB</span>
+      <div class="rail-nav-top">
+        <div class="mini-brand">
+          <strong>MAZE</strong>
+          <span>v1.0</span>
+        </div>
+        <button class="lang is-active">中</button>
+        <button class="lang">EN</button>
       </div>
       <a class="nav-link" href="https://gsap.com" target="_blank" rel="noreferrer">
         <span class="icon">↗</span>
@@ -32,54 +30,56 @@ app.innerHTML = `
 
     <aside class="panel">
       <div class="brand">
-        <span class="brand-mark"></span>
+        <div class="brand-mark"></div>
         <div>
           <h1>MAZE FOUNDRY</h1>
           <p>TS GENERATOR / THREE INSPECTOR</p>
         </div>
       </div>
 
-      <section class="section">
-        <div class="section-head">
-          <h2>Generator</h2>
-          <button id="generateBtn" class="primary">Generate</button>
-        </div>
-        <label class="field">
-          <span>Seed</span>
-          <input id="seedInput" type="number" value="20260425" />
-        </label>
-        <label class="field">
-          <span>Target difficulty</span>
-          <input id="difficultyInput" type="number" min="1" step="1" value="${DEFAULT_GENERATOR_OPTIONS.targetDifficulty}" />
-        </label>
-        <label class="field">
-          <span>Bounds X/Y/Z</span>
-          <div class="triple">
-            <input id="boundX" type="number" value="${DEFAULT_GENERATOR_OPTIONS.bounds.x}" />
-            <input id="boundY" type="number" value="${DEFAULT_GENERATOR_OPTIONS.bounds.y}" />
-            <input id="boundZ" type="number" value="${DEFAULT_GENERATOR_OPTIONS.bounds.z}" />
+      <div class="panel-body">
+        <section class="section">
+          <div class="section-head">
+            <h2>Generator</h2>
+            <button id="generateBtn" class="primary">Generate</button>
           </div>
-        </label>
-        <div class="actions">
-          <button id="downloadBtn">Download JSON</button>
-          <button id="resetCameraBtn">Reset View</button>
-        </div>
-      </section>
+          <label class="field">
+            <span>Seed</span>
+            <input id="seedInput" type="number" value="20260425" />
+          </label>
+          <label class="field">
+            <span>Target difficulty</span>
+            <input id="difficultyInput" type="number" min="1" step="1" value="${DEFAULT_GENERATOR_OPTIONS.targetDifficulty}" />
+          </label>
+          <label class="field">
+            <span>Bounds X/Y/Z</span>
+            <div class="triple">
+              <input id="boundX" type="number" value="${DEFAULT_GENERATOR_OPTIONS.bounds.x}" />
+              <input id="boundY" type="number" value="${DEFAULT_GENERATOR_OPTIONS.bounds.y}" />
+              <input id="boundZ" type="number" value="${DEFAULT_GENERATOR_OPTIONS.bounds.z}" />
+            </div>
+          </label>
+          <div class="actions">
+            <button id="downloadBtn">Download JSON</button>
+            <button id="resetCameraBtn">Reset View</button>
+          </div>
+        </section>
 
-      <section class="drop" id="dropZone">
-        <strong>Drop CSV or maze JSON</strong>
-        <span>CSV regenerates config. JSON opens a layout.</span>
-      </section>
+        <section class="drop" id="dropZone">
+          <strong>Drop CSV or maze JSON</strong>
+          <span>CSV regenerates config. JSON opens a layout.</span>
+        </section>
 
-      <section class="section stats">
-        <h2>Stats</h2>
-        <div id="statsContent" class="stats-grid"></div>
-      </section>
+        <section class="section stats">
+          <h2>Stats</h2>
+          <div id="statsContent" class="stats-grid"></div>
+        </section>
 
-      <section class="section details">
-        <h2>Rail Detail</h2>
-        <div id="detailContent" class="muted">Hover a rail in the scene.</div>
-      </section>
+        <section class="section details">
+          <h2>Rail Detail</h2>
+          <div id="detailContent" class="muted">Hover a rail in the scene.</div>
+        </section>
+      </div>
     </aside>
 
     <section class="viewport">
@@ -225,3 +225,4 @@ setLayout(currentLayout);
 renderLog([{ kind: "info", message: "Loaded existing maze_layout.json. Generate to run the TypeScript port." }]);
 gsap.from(".panel", { x: -20, opacity: 0, duration: 0.45, ease: "power3.out" });
 gsap.from(".log-dock", { y: 18, opacity: 0, duration: 0.45, delay: 0.12, ease: "power3.out" });
+gsap.from(".rail-nav", { opacity: 0, duration: 0.35, ease: "power2.out" });

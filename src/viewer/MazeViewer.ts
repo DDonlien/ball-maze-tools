@@ -77,7 +77,6 @@ export class MazeViewer {
 
     this.drawBounds();
     this.drawRails(layout.Rail);
-    this.frameLayout(layout);
     gsap.fromTo(this.root.scale, { x: 0.96, y: 0.96, z: 0.96 }, { x: 1, y: 1, z: 1, duration: 0.55, ease: "power3.out" });
     gsap.fromTo(this.root.position, { z: -8 }, { z: 0, duration: 0.55, ease: "power3.out" });
   }
@@ -438,14 +437,6 @@ export class MazeViewer {
     const current = this.railArrowMap.get(railId) ?? [];
     current.push(arrowIdx);
     this.railArrowMap.set(railId, current);
-  }
-
-  private frameLayout(layout: MazeLayout): void {
-    if (layout.Rail.length === 0) return;
-    const points = layout.Rail.map((rail) => new THREE.Vector3(rail.Pos_Abs.x, -rail.Pos_Abs.y, rail.Pos_Abs.z));
-    const box = new THREE.Box3().setFromPoints(points);
-    const center = box.getCenter(new THREE.Vector3());
-    gsap.to(this.controls.target, { x: center.x, y: center.y, z: center.z, duration: 0.5, ease: "power3.out" });
   }
 
   private resize = (): void => {
