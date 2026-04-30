@@ -11,11 +11,15 @@ import "./styles/main.css";
 const app = document.querySelector<HTMLDivElement>("#app");
 if (!app) throw new Error("Missing #app");
 
+function createRandomSeed(): string {
+  return String(Math.floor(Math.random() * 90000000) + 10000000);
+}
+
 app.innerHTML = `
   <main class="shell">
     <aside class="panel">
       <div class="brand">
-        <div class="brand-mark"></div>
+        <img class="brand-icon" src="${import.meta.env.BASE_URL}ball-maze-icon.png" alt="" />
         <h1>BALL MAZE BUILDER</h1>
         <div class="lang-switch" aria-label="Language">
           <button class="lang is-active">中</button>
@@ -37,7 +41,7 @@ app.innerHTML = `
           <label class="field">
             <span title="随机种子。相同 CSV、参数和 seed 会生成同一套迷宫，方便复现和调试。">Seed</span>
             <div class="seed-row">
-              <input id="seedInput" type="number" value="20260425" />
+              <input id="seedInput" type="number" value="${createRandomSeed()}" />
               <button id="randomSeedBtn" class="icon-button" title="随机生成一个新的 seed。">↻</button>
             </div>
           </label>
@@ -46,11 +50,11 @@ app.innerHTML = `
             <input id="difficultyInput" type="number" min="1" step="1" value="${DEFAULT_GENERATOR_OPTIONS.targetDifficulty}" />
           </label>
           <label class="field">
-            <span title="生成边界，单位是逻辑 grid。X/Y/Z 分别限制迷宫可占用的半宽范围。">Bounds X/Y/Z</span>
+            <span title="生成边界的实际双边尺寸，单位是逻辑 grid。只使用 1、3、5、7 这样的奇数；1 等于旧逻辑里的 0，3 等于旧逻辑里的 1。">Bounds X/Y/Z</span>
             <div class="triple">
-              <input id="boundX" type="number" value="${DEFAULT_GENERATOR_OPTIONS.bounds.x}" />
-              <input id="boundY" type="number" value="${DEFAULT_GENERATOR_OPTIONS.bounds.y}" />
-              <input id="boundZ" type="number" value="${DEFAULT_GENERATOR_OPTIONS.bounds.z}" />
+              <input id="boundX" type="number" min="1" step="2" value="${DEFAULT_GENERATOR_OPTIONS.bounds.x}" />
+              <input id="boundY" type="number" min="1" step="2" value="${DEFAULT_GENERATOR_OPTIONS.bounds.y}" />
+              <input id="boundZ" type="number" min="1" step="2" value="${DEFAULT_GENERATOR_OPTIONS.bounds.z}" />
             </div>
           </label>
           <div class="actions">
@@ -77,11 +81,27 @@ app.innerHTML = `
       <header class="topbar">
         <button id="historyBackBtn" class="tool-chip" title="返回上一个相机 focus。">返回</button>
         <button id="historyForwardBtn" class="tool-chip" title="前进到下一个相机 focus。">前进</button>
+        <button id="projectionToggleBtn" class="tool-chip" title="在透视和无透视视图之间切换。">透视</button>
         <button id="focusToggleBtn" class="tool-chip primary-tool" data-current="Focus: Maze" data-next="Focus: Bounds" title="在建筑区域中心和当前迷宫中心之间切换相机 focus。"></button>
       </header>
       <div id="viewerHost" class="viewer"></div>
+      <div class="view-axis" aria-label="View axis">
+        <button data-view="top" class="axis-z" title="Top view">Z</button>
+        <div>
+          <button data-view="left" class="axis-x" title="Left view">-X</button>
+          <button data-view="iso" title="Iso view">ISO</button>
+          <button data-view="right" class="axis-x" title="Right view">X</button>
+        </div>
+        <div>
+          <button data-view="front" class="axis-y" title="Front view">Y</button>
+          <button data-view="back" class="axis-y" title="Back view">-Y</button>
+        </div>
+      </div>
       <div class="log-dock">
-        <div class="log-head">Generation Log</div>
+        <div class="log-head">
+          <span>Generation Log</span>
+          <button id="logToggleBtn" class="log-toggle" title="收起生成日志内容。" aria-expanded="true">收起</button>
+        </div>
         <div id="logContent" class="log-content"></div>
       </div>
     </section>
@@ -92,6 +112,8 @@ const viewerHost = document.querySelector<HTMLDivElement>("#viewerHost")!;
 const statsContent = document.querySelector<HTMLDivElement>("#statsContent")!;
 const detailContent = document.querySelector<HTMLDivElement>("#detailContent")!;
 const logContent = document.querySelector<HTMLDivElement>("#logContent")!;
+const logDock = document.querySelector<HTMLDivElement>(".log-dock")!;
+const logToggleBtn = document.querySelector<HTMLButtonElement>("#logToggleBtn")!;
 const generateBtn = document.querySelector<HTMLButtonElement>("#generateBtn")!;
 const downloadBtn = document.querySelector<HTMLButtonElement>("#downloadBtn")!;
 const resetCameraBtn = document.querySelector<HTMLButtonElement>("#resetCameraBtn")!;
@@ -100,7 +122,9 @@ const moveCenterBtn = document.querySelector<HTMLButtonElement>("#moveCenterBtn"
 const fitBoundsBtn = document.querySelector<HTMLButtonElement>("#fitBoundsBtn")!;
 const historyBackBtn = document.querySelector<HTMLButtonElement>("#historyBackBtn")!;
 const historyForwardBtn = document.querySelector<HTMLButtonElement>("#historyForwardBtn")!;
+const projectionToggleBtn = document.querySelector<HTMLButtonElement>("#projectionToggleBtn")!;
 const focusToggleBtn = document.querySelector<HTMLButtonElement>("#focusToggleBtn")!;
+const viewAxis = document.querySelector<HTMLDivElement>(".view-axis")!;
 const dropZone = document.querySelector<HTMLDivElement>("#dropZone")!;
 const seedInput = document.querySelector<HTMLInputElement>("#seedInput")!;
 const difficultyInput = document.querySelector<HTMLInputElement>("#difficultyInput")!;
@@ -135,15 +159,13 @@ viewer.onHover = (rail) => {
 
 function generateLayout(): void {
   try {
+    normalizeBoundInputs();
+    const bounds = currentBounds();
     const config = loadConfigFromCsv(csvText);
     const generator = new MazeGenerator(config, {
       seed: Number(seedInput.value) || Date.now(),
       targetDifficulty: Number(difficultyInput.value) || DEFAULT_GENERATOR_OPTIONS.targetDifficulty,
-      bounds: new Vector3(
-        Number(boundX.value) || DEFAULT_GENERATOR_OPTIONS.bounds.x,
-        Number(boundY.value) || DEFAULT_GENERATOR_OPTIONS.bounds.y,
-        Number(boundZ.value) || DEFAULT_GENERATOR_OPTIONS.bounds.z,
-      ),
+      bounds: new Vector3(bounds.x, bounds.y, bounds.z),
     });
     currentLayout = generator.generate();
     setLayout(currentLayout);
@@ -200,19 +222,28 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 function currentBounds(): Vec3Dict {
+  const read = (input: HTMLInputElement, fallback: number) => {
+    const value = Number(input.value);
+    return Number.isFinite(value) ? normalizeBoundSize(value) : fallback;
+  };
   return {
-    x: Math.max(0, Number(boundX.value) || DEFAULT_GENERATOR_OPTIONS.bounds.x),
-    y: Math.max(0, Number(boundY.value) || DEFAULT_GENERATOR_OPTIONS.bounds.y),
-    z: Math.max(0, Number(boundZ.value) || DEFAULT_GENERATOR_OPTIONS.bounds.z),
+    x: read(boundX, DEFAULT_GENERATOR_OPTIONS.bounds.x),
+    y: read(boundY, DEFAULT_GENERATOR_OPTIONS.bounds.y),
+    z: read(boundZ, DEFAULT_GENERATOR_OPTIONS.bounds.z),
   };
 }
 
 function centerOffsetForBounds(layout: MazeLayout, bounds: Vec3Dict): Vec3Dict {
   const box = layoutBounds(layout);
+  const radius = {
+    x: boundRadius(bounds.x),
+    y: boundRadius(bounds.y),
+    z: boundRadius(bounds.z),
+  };
   return {
-    x: clamp(Math.round(-(box.min.x + box.max.x) / 2), -bounds.x - box.min.x, bounds.x - box.max.x),
-    y: clamp(Math.round(-(box.min.y + box.max.y) / 2), -bounds.y - box.min.y, bounds.y - box.max.y),
-    z: clamp(Math.round(-(box.min.z + box.max.z) / 2), -bounds.z - box.min.z, bounds.z - box.max.z),
+    x: clamp(Math.round(-(box.min.x + box.max.x) / 2), -radius.x - box.min.x, radius.x - box.max.x),
+    y: clamp(Math.round(-(box.min.y + box.max.y) / 2), -radius.y - box.min.y, radius.y - box.max.y),
+    z: clamp(Math.round(-(box.min.z + box.max.z) / 2), -radius.z - box.min.z, radius.z - box.max.z),
   };
 }
 
@@ -239,9 +270,9 @@ function moveLayoutToCenter(): void {
 function fitLayoutBounds(): void {
   const box = layoutBounds(currentLayout);
   const fitted = {
-    x: Math.max(0, Math.ceil((box.max.x - box.min.x) / 2)),
-    y: Math.max(0, Math.ceil((box.max.y - box.min.y) / 2)),
-    z: Math.max(0, Math.ceil((box.max.z - box.min.z) / 2)),
+    x: normalizeBoundSize(box.max.x - box.min.x + 1),
+    y: normalizeBoundSize(box.max.y - box.min.y + 1),
+    z: normalizeBoundSize(box.max.z - box.min.z + 1),
   };
   boundX.value = String(fitted.x);
   boundY.value = String(fitted.y);
@@ -260,12 +291,37 @@ function renderLog(logs: { kind: string; message: string }[]): void {
 }
 
 function randomizeSeed(): void {
-  seedInput.value = String(Math.floor(Math.random() * 90000000) + 10000000);
+  seedInput.value = createRandomSeed();
+  generateLayout();
+}
+
+function toggleLogDock(): void {
+  const isCollapsed = logDock.classList.toggle("is-collapsed");
+  logToggleBtn.textContent = isCollapsed ? "展开" : "收起";
+  logToggleBtn.title = isCollapsed ? "展开生成日志内容。" : "收起生成日志内容。";
+  logToggleBtn.setAttribute("aria-expanded", String(!isCollapsed));
 }
 
 function refreshBoundsOnly(): void {
+  normalizeBoundInputs();
   viewer.setBounds(currentBounds());
   viewer.setLayout(currentLayout);
+}
+
+function normalizeBoundInputs(): void {
+  [boundX, boundY, boundZ].forEach((input) => {
+    const value = Number(input.value);
+    if (Number.isFinite(value)) input.value = String(normalizeBoundSize(value));
+  });
+}
+
+function normalizeBoundSize(value: number): number {
+  const whole = Math.max(1, Math.round(value));
+  return whole % 2 === 0 ? whole + 1 : whole;
+}
+
+function boundRadius(size: number): number {
+  return Math.max(0, Math.floor((size - 1) / 2));
 }
 
 function updateFocusButton(): void {
@@ -312,10 +368,15 @@ generateBtn.addEventListener("click", generateLayout);
 downloadBtn.addEventListener("click", downloadLayout);
 resetCameraBtn.addEventListener("click", () => viewer.resetCamera());
 randomSeedBtn.addEventListener("click", randomizeSeed);
+logToggleBtn.addEventListener("click", toggleLogDock);
 moveCenterBtn.addEventListener("click", moveLayoutToCenter);
 fitBoundsBtn.addEventListener("click", fitLayoutBounds);
 historyBackBtn.addEventListener("click", () => viewer.goBack());
 historyForwardBtn.addEventListener("click", () => viewer.goForward());
+projectionToggleBtn.addEventListener("click", () => {
+  const mode = viewer.toggleProjection();
+  projectionToggleBtn.textContent = mode === "perspective" ? "透视" : "无透视";
+});
 focusToggleBtn.addEventListener("click", () => {
   focusMode = focusMode === "maze" ? "bounds" : "maze";
   if (focusMode === "maze") {
@@ -326,6 +387,11 @@ focusToggleBtn.addEventListener("click", () => {
   updateFocusButton();
 });
 [boundX, boundY, boundZ].forEach((input) => input.addEventListener("input", refreshBoundsOnly));
+viewAxis.addEventListener("click", (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-view]");
+  if (!button) return;
+  viewer.focusView(button.dataset.view as "iso" | "top" | "front" | "back" | "left" | "right");
+});
 dropZone.addEventListener("dragover", (event) => {
   event.preventDefault();
   dropZone.classList.add("is-over");
@@ -338,8 +404,7 @@ dropZone.addEventListener("drop", (event) => {
   if (file) handleFile(file);
 });
 
-setLayout(currentLayout);
 updateFocusButton();
-renderLog([{ kind: "info", message: "Loaded existing maze_layout.json. Generate to run the TypeScript port." }]);
+generateLayout();
 gsap.from(".panel", { x: -20, opacity: 0, duration: 0.45, ease: "power3.out" });
 gsap.from(".log-dock", { y: 18, opacity: 0, duration: 0.45, delay: 0.12, ease: "power3.out" });

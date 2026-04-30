@@ -15,7 +15,7 @@ interface RailMeta {
 
 export class MazeViewer {
   private scene = new THREE.Scene();
-  private camera: THREE.PerspectiveCamera;
+  private camera: THREE.PerspectiveCamera | THREE.OrthographicCamera;
   private renderer: THREE.WebGLRenderer;
   private controls: OrbitControls;
   private raycaster = new THREE.Raycaster();
@@ -35,11 +35,13 @@ export class MazeViewer {
   private bounds: Vec3Dict = { x: 4, y: 4, z: 1 };
   private focusHistory: THREE.Vector3[] = [new THREE.Vector3(0, 0, 0)];
   private focusHistoryIndex = 0;
+  private projectionMode: "perspective" | "orthographic" = "perspective";
+  private readonly orthoHeight = 260;
   onHover?: (rail: RailMeta | null) => void;
 
   constructor(private host: HTMLElement) {
     this.scene.background = new THREE.Color(0xfbfbf8);
-    this.camera = new THREE.PerspectiveCamera(60, host.clientWidth / host.clientHeight, 1, 5000);
+    this.camera = this.createPerspectiveCamera();
     this.camera.up.set(0, 0, 1);
     this.camera.position.set(130, -150, 115);
 
@@ -88,6 +90,52 @@ export class MazeViewer {
     this.bounds = bounds;
   }
 
+  toggleProjection(): "perspective" | "orthographic" {
+    this.setProjectionMode(this.projectionMode === "perspective" ? "orthographic" : "perspective");
+    return this.projectionMode;
+  }
+
+  setProjectionMode(mode: "perspective" | "orthographic"): void {
+    if (mode === this.projectionMode) return;
+    const position = this.camera.position.clone();
+    const up = this.camera.up.clone();
+    const target = this.controls.target.clone();
+    this.projectionMode = mode;
+    this.controls.dispose();
+    this.camera = mode === "perspective" ? this.createPerspectiveCamera() : this.createOrthographicCamera();
+    this.camera.position.copy(position);
+    this.camera.up.copy(up);
+    this.camera.lookAt(target);
+    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    this.controls.enableDamping = true;
+    this.controls.target.copy(target);
+    this.resize();
+  }
+
+  focusView(view: "iso" | "top" | "front" | "back" | "left" | "right"): void {
+    const target = this.controls.target.clone();
+    const distance = Math.max(this.camera.position.distanceTo(target), 160);
+    const directions = {
+      iso: new THREE.Vector3(1, -1, 0.8).normalize(),
+      top: new THREE.Vector3(0, 0, 1),
+      front: new THREE.Vector3(0, -1, 0),
+      back: new THREE.Vector3(0, 1, 0),
+      left: new THREE.Vector3(-1, 0, 0),
+      right: new THREE.Vector3(1, 0, 0),
+    };
+    const up = view === "top" ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1);
+    const nextPosition = target.clone().add(directions[view].multiplyScalar(distance));
+    this.camera.up.copy(up);
+    gsap.to(this.camera.position, {
+      x: nextPosition.x,
+      y: nextPosition.y,
+      z: nextPosition.z,
+      duration: 0.45,
+      ease: "power3.inOut",
+      onUpdate: () => this.camera.lookAt(this.controls.target),
+    });
+  }
+
   resetCamera(): void {
     this.moveFocus(new THREE.Vector3(0, 0, 0), true);
     gsap.to(this.camera.position, { x: 130, y: -150, z: 115, duration: 0.6, ease: "power3.inOut" });
@@ -98,7 +146,8 @@ export class MazeViewer {
   }
 
   focusBounds(bounds: Vec3Dict): void {
-    this.moveFocus(new THREE.Vector3(0, 0, bounds.z * GRID_TO_WORLD_SCALE * 0.5), true);
+    const radiusZ = Math.max(0, Math.floor((bounds.z - 1) / 2));
+    this.moveFocus(new THREE.Vector3(0, 0, radiusZ * GRID_TO_WORLD_SCALE * 0.5), true);
   }
 
   goBack(): void {
@@ -134,6 +183,32 @@ export class MazeViewer {
       duration: 0.55,
       ease: "power3.inOut",
     });
+  }
+
+  private createPerspectiveCamera(): THREE.PerspectiveCamera {
+    return new THREE.PerspectiveCamera(60, this.host.clientWidth / Math.max(this.host.clientHeight, 1), 1, 5000);
+  }
+
+  private createOrthographicCamera(): THREE.OrthographicCamera {
+    const aspect = this.host.clientWidth / Math.max(this.host.clientHeight, 1);
+    const halfHeight = this.orthoHeight / 2;
+    return new THREE.OrthographicCamera(-halfHeight * aspect, halfHeight * aspect, halfHeight, -halfHeight, 1, 5000);
+  }
+
+  private updateCameraProjection(): void {
+    const width = Math.max(this.host.clientWidth, 1);
+    const height = Math.max(this.host.clientHeight, 1);
+    if (this.camera instanceof THREE.PerspectiveCamera) {
+      this.camera.aspect = width / height;
+    } else {
+      const halfHeight = this.orthoHeight / 2;
+      const halfWidth = halfHeight * (width / height);
+      this.camera.left = -halfWidth;
+      this.camera.right = halfWidth;
+      this.camera.top = halfHeight;
+      this.camera.bottom = -halfHeight;
+    }
+    this.camera.updateProjectionMatrix();
   }
 
   private getMazeCenter(): THREE.Vector3 {
@@ -172,12 +247,15 @@ export class MazeViewer {
   private drawBounds(): void {
     if (!this.root) return;
     const half = GRID_TO_WORLD_SCALE / 2;
-    const minX = -this.bounds.x * GRID_TO_WORLD_SCALE - half;
-    const maxX = this.bounds.x * GRID_TO_WORLD_SCALE + half;
-    const minY = -this.bounds.y * GRID_TO_WORLD_SCALE - half;
-    const maxY = this.bounds.y * GRID_TO_WORLD_SCALE + half;
-    const minZ = -this.bounds.z * GRID_TO_WORLD_SCALE - half;
-    const maxZ = this.bounds.z * GRID_TO_WORLD_SCALE + half;
+    const radiusX = Math.max(0, Math.floor((this.bounds.x - 1) / 2));
+    const radiusY = Math.max(0, Math.floor((this.bounds.y - 1) / 2));
+    const radiusZ = Math.max(0, Math.floor((this.bounds.z - 1) / 2));
+    const minX = -radiusX * GRID_TO_WORLD_SCALE - half;
+    const maxX = radiusX * GRID_TO_WORLD_SCALE + half;
+    const minY = -radiusY * GRID_TO_WORLD_SCALE - half;
+    const maxY = radiusY * GRID_TO_WORLD_SCALE + half;
+    const minZ = -radiusZ * GRID_TO_WORLD_SCALE - half;
+    const maxZ = radiusZ * GRID_TO_WORLD_SCALE + half;
     const boxGeo = new THREE.BoxGeometry(maxX - minX, maxY - minY, maxZ - minZ);
     const edges = new THREE.EdgesGeometry(boxGeo);
     const line = new THREE.LineSegments(
@@ -280,7 +358,7 @@ export class MazeViewer {
   }
 
   private railBounds(rail: MazeRailJson): { center: THREE.Vector3; size: THREE.Vector3 } {
-    const cells = rail.Occupied_Cells_Rev.length > 0 ? rail.Occupied_Cells_Rev : [rail.Pos_Rev];
+    const cells = this.visualCellsForRail(rail);
     const xs = cells.map((cell) => cell.x * GRID_TO_WORLD_SCALE);
     const ys = cells.map((cell) => -cell.y * GRID_TO_WORLD_SCALE);
     const zs = cells.map((cell) => cell.z * GRID_TO_WORLD_SCALE);
@@ -294,6 +372,10 @@ export class MazeViewer {
       center: new THREE.Vector3((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2),
       size: new THREE.Vector3(maxX - minX + GRID_TO_WORLD_SCALE - 1, maxY - minY + GRID_TO_WORLD_SCALE - 1, maxZ - minZ + GRID_TO_WORLD_SCALE - 1),
     };
+  }
+
+  private visualCellsForRail(rail: MazeRailJson): Vec3Dict[] {
+    return rail.Occupied_Cells_Rev.length > 0 ? rail.Occupied_Cells_Rev : [rail.Pos_Rev];
   }
 
   private addArrow(
@@ -507,8 +589,7 @@ export class MazeViewer {
   private resize = (): void => {
     const width = this.host.clientWidth;
     const height = this.host.clientHeight;
-    this.camera.aspect = width / height;
-    this.camera.updateProjectionMatrix();
+    this.updateCameraProjection();
     this.renderer.setSize(width, height);
   };
 

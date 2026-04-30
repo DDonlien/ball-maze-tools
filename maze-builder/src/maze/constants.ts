@@ -6,5 +6,5 @@ export const DEFAULT_GENERATOR_OPTIONS = {
   targetDifficulty: 15,
   targetCheckpoints: 0,
   boundaryMode: 0 as const,
-  bounds: new Vector3(4, 4, 1),
+  bounds: new Vector3(9, 9, 3),
 };

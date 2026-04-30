@@ -26,6 +26,10 @@ function mod360(value: number): number {
   return ((value % 360) + 360) % 360;
 }
 
+function boundRadius(size: number): number {
+  return Math.max(0, Math.floor((size - 1) / 2));
+}
+
 export function calculateOccupiedCells(
   railId: string,
   pos: Vector3,
@@ -95,10 +99,12 @@ export class MazeGenerator {
     if (startCandidates.length === 0) throw new Error("No Start Rail defined.");
 
     const start = this.random.choice(startCandidates);
-    const minX = -this.options.bounds.x;
-    const maxX = this.options.bounds.x - start.sizeRev.x + 1;
-    const minY = -this.options.bounds.y;
-    const maxY = this.options.bounds.y - start.sizeRev.y + 1;
+    const radiusX = boundRadius(this.options.bounds.x);
+    const radiusY = boundRadius(this.options.bounds.y);
+    const minX = -radiusX;
+    const maxX = radiusX - start.sizeRev.x + 1;
+    const minY = -radiusY;
+    const maxY = radiusY - start.sizeRev.y + 1;
     const startPos = new Vector3(this.random.int(Math.min(minX, maxX), Math.max(minX, maxX)), this.random.int(Math.min(minY, maxY), Math.max(minY, maxY)), 0);
 
     const startResult = this.placeRailV2(start.rowName, startPos, 0, { p: 0, y: 0, r: 0 }, 0, 1, -1, 0);
@@ -379,15 +385,18 @@ export class MazeGenerator {
     const maxY = Math.max(...ys);
     const minZ = Math.min(...zs);
     const maxZ = Math.max(...zs);
+    const radiusX = boundRadius(this.options.bounds.x);
+    const radiusY = boundRadius(this.options.bounds.y);
+    const radiusZ = boundRadius(this.options.bounds.z);
 
     if (this.options.boundaryMode === 0) {
       return (
-        minX >= -this.options.bounds.x &&
-        maxX <= this.options.bounds.x &&
-        minY >= -this.options.bounds.y &&
-        maxY <= this.options.bounds.y &&
-        minZ >= -this.options.bounds.z &&
-        maxZ <= this.options.bounds.z
+        minX >= -radiusX &&
+        maxX <= radiusX &&
+        minY >= -radiusY &&
+        maxY <= radiusY &&
+        minZ >= -radiusZ &&
+        maxZ <= radiusZ
       );
     }
 
@@ -402,9 +411,9 @@ export class MazeGenerator {
     ];
 
     return (
-      next[1] - next[0] + 1 <= this.options.bounds.x * 2 + 1 &&
-      next[3] - next[2] + 1 <= this.options.bounds.y * 2 + 1 &&
-      next[5] - next[4] + 1 <= this.options.bounds.z * 2 + 1
+      next[1] - next[0] + 1 <= this.options.bounds.x &&
+      next[3] - next[2] + 1 <= this.options.bounds.y &&
+      next[5] - next[4] + 1 <= this.options.bounds.z
     );
   }
 

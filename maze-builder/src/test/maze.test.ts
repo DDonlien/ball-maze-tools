@@ -44,6 +44,17 @@ describe("TypeScript maze port", () => {
     }
   });
 
+  it("treats bounds as actual odd grid size", () => {
+    const config = loadConfigFromCsv(railConfigCsv);
+    const tiny = new MazeGenerator(config, { bounds: new Vector3(1, 1, 1), targetDifficulty: 1 });
+    expect(tiny["isInBounds"]([[0, 0, 0]])).toBe(true);
+    expect(tiny["isInBounds"]([[1, 0, 0]])).toBe(false);
+
+    const three = new MazeGenerator(config, { bounds: new Vector3(3, 3, 3), targetDifficulty: 1 });
+    expect(three["isInBounds"]([[-1, 0, 0], [1, 0, 0]])).toBe(true);
+    expect(three["isInBounds"]([[-2, 0, 0]])).toBe(false);
+  });
+
   it("generates a connected layout in the exported JSON shape", () => {
     const config = loadConfigFromCsv(railConfigCsv);
     const layout = new MazeGenerator(config, { seed: 20260425, targetDifficulty: 15 }).generate();
