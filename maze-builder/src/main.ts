@@ -13,27 +13,13 @@ if (!app) throw new Error("Missing #app");
 
 app.innerHTML = `
   <main class="shell">
-    <nav class="rail-nav">
-      <div class="rail-nav-top">
-        <div class="mini-brand">
-          <strong>MAZE</strong>
-          <span>v1.0</span>
-        </div>
-        <button class="lang is-active">中</button>
-        <button class="lang">EN</button>
-      </div>
-      <a class="nav-link" href="https://gsap.com" target="_blank" rel="noreferrer">
-        <span class="icon">↗</span>
-        <span>GSAP</span>
-      </a>
-    </nav>
-
     <aside class="panel">
       <div class="brand">
         <div class="brand-mark"></div>
-        <div>
-          <h1>MAZE FOUNDRY</h1>
-          <p>TS GENERATOR / THREE INSPECTOR</p>
+        <h1>BALL MAZE BUILDER</h1>
+        <div class="lang-switch" aria-label="Language">
+          <button class="lang is-active">中</button>
+          <button class="lang">EN</button>
         </div>
       </div>
 
@@ -225,4 +211,3 @@ setLayout(currentLayout);
 renderLog([{ kind: "info", message: "Loaded existing maze_layout.json. Generate to run the TypeScript port." }]);
 gsap.from(".panel", { x: -20, opacity: 0, duration: 0.45, ease: "power3.out" });
 gsap.from(".log-dock", { y: 18, opacity: 0, duration: 0.45, delay: 0.12, ease: "power3.out" });
-gsap.from(".rail-nav", { opacity: 0, duration: 0.35, ease: "power2.out" });
