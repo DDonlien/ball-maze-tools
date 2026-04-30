@@ -21,6 +21,10 @@ body {
   letter-spacing: 0;
 }
 
+.latin {
+  font-family: "JetBrains Mono", "Maple Mono NF CN", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
 button,
 input {
   font: inherit;
@@ -161,6 +165,12 @@ h2 {
 .field {
   display: grid;
   gap: 5px;
+}
+
+.seed-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 38px;
+  gap: 6px;
 }
 
 .field span,
@@ -331,6 +341,15 @@ button:hover {
   border-bottom: 1px solid #deded8;
 }
 
+.icon-button {
+  display: grid;
+  place-items: center;
+  min-height: 34px;
+  width: 38px;
+  padding: 0;
+  font-size: 13px;
+}
+
 .tool-chip {
   min-width: 72px;
   height: 34px;
@@ -344,6 +363,20 @@ button:hover {
   color: #fff;
   background: #28302d;
   border-color: #28302d;
+}
+
+.primary-tool::before {
+  content: attr(data-current);
+}
+
+.primary-tool:hover {
+  color: #2c3230;
+  background: #fff;
+  border-color: #2c3230;
+}
+
+.primary-tool:hover::before {
+  content: attr(data-next);
 }
 
 .viewer {
@@ -390,39 +423,6 @@ button:hover {
   font-family: "Maple Mono NF CN", "Maple Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px;
   line-height: 1.55;
-}
-
-[data-tip] {
-  position: relative;
-}
-
-[data-tip]::after {
-  position: absolute;
-  left: 0;
-  bottom: calc(100% + 8px);
-  z-index: 20;
-  width: max-content;
-  max-width: 260px;
-  padding: 7px 9px;
-  color: #fff;
-  background: #28302d;
-  border: 1px solid #101412;
-  content: attr(data-tip);
-  font-size: 10px;
-  line-height: 1.45;
-  letter-spacing: 0;
-  text-transform: none;
-  white-space: normal;
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(4px);
-  transition: opacity 0.12s ease, transform 0.12s ease;
-}
-
-[data-tip]:hover::after,
-[data-tip]:focus-visible::after {
-  opacity: 1;
-  transform: translateY(0);
 }
 
 .log-line.success {

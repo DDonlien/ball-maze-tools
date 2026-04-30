@@ -24,7 +24,7 @@ app.innerHTML = `
       </div>
 
       <div class="panel-body">
-        <section class="drop" id="dropZone" data-tip="拖入 UE 导出的 CSV 会重新生成配置；拖入 maze JSON 会直接打开布局。">
+        <section class="drop" id="dropZone" title="拖入 UE 导出的 CSV 会重新生成配置；拖入 maze JSON 会直接打开布局。">
           <strong>Drop CSV or maze JSON</strong>
           <span>CSV regenerates config. JSON opens a layout.</span>
         </section>
@@ -32,18 +32,21 @@ app.innerHTML = `
         <section class="section">
           <div class="section-head">
             <h2>Generator</h2>
-            <button id="generateBtn" class="primary" data-tip="使用当前 CSV、seed、目标难度和边界重新生成迷宫。">Generate</button>
+            <button id="generateBtn" class="primary" title="使用当前 CSV、seed、目标难度和边界重新生成迷宫。">Generate</button>
           </div>
           <label class="field">
-            <span data-tip="随机种子。相同 CSV、参数和 seed 会生成同一套迷宫，方便复现和调试。">Seed</span>
-            <input id="seedInput" type="number" value="20260425" />
+            <span title="随机种子。相同 CSV、参数和 seed 会生成同一套迷宫，方便复现和调试。">Seed</span>
+            <div class="seed-row">
+              <input id="seedInput" type="number" value="20260425" />
+              <button id="randomSeedBtn" class="icon-button" title="随机生成一个新的 seed。">↻</button>
+            </div>
           </label>
           <label class="field">
-            <span data-tip="目标总难度。生成器达到该难度后会尝试收尾并放置终点。">Target difficulty</span>
+            <span title="目标总难度。生成器达到该难度后会尝试收尾并放置终点。">Target difficulty</span>
             <input id="difficultyInput" type="number" min="1" step="1" value="${DEFAULT_GENERATOR_OPTIONS.targetDifficulty}" />
           </label>
           <label class="field">
-            <span data-tip="生成边界，单位是逻辑 grid。X/Y/Z 分别限制迷宫可占用的半宽范围。">Bounds X/Y/Z</span>
+            <span title="生成边界，单位是逻辑 grid。X/Y/Z 分别限制迷宫可占用的半宽范围。">Bounds X/Y/Z</span>
             <div class="triple">
               <input id="boundX" type="number" value="${DEFAULT_GENERATOR_OPTIONS.bounds.x}" />
               <input id="boundY" type="number" value="${DEFAULT_GENERATOR_OPTIONS.bounds.y}" />
@@ -51,10 +54,10 @@ app.innerHTML = `
             </div>
           </label>
           <div class="actions">
-            <button id="moveCenterBtn" data-tip="按 grid 整数偏移当前迷宫，使布局尽量落在当前 bounds 的中心。">Move to center</button>
-            <button id="fitBoundsBtn" data-tip="把 bounds 收缩到能容纳当前迷宫的最小 grid 尺寸，并重新居中布局。">Fit size</button>
-            <button id="downloadBtn" data-tip="下载当前迷宫 JSON。">Download JSON</button>
-            <button id="resetCameraBtn" data-tip="重置相机视角。">Reset View</button>
+            <button id="moveCenterBtn" title="按 grid 整数偏移当前迷宫，使布局尽量落在当前 bounds 的中心。">Move to center</button>
+            <button id="fitBoundsBtn" title="把 bounds 收缩到能容纳当前迷宫的最小 grid 尺寸，并重新居中布局。">Fit size</button>
+            <button id="downloadBtn" title="下载当前迷宫 JSON。">Download JSON</button>
+            <button id="resetCameraBtn" title="重置相机视角。">Reset View</button>
           </div>
         </section>
 
@@ -72,9 +75,9 @@ app.innerHTML = `
 
     <section class="viewport">
       <header class="topbar">
-        <button id="historyBackBtn" class="tool-chip" data-tip="返回上一个相机 focus。">返回</button>
-        <button id="historyForwardBtn" class="tool-chip" data-tip="前进到下一个相机 focus。">前进</button>
-        <button id="focusToggleBtn" class="tool-chip primary-tool" data-tip="在建筑区域中心和当前迷宫中心之间切换相机 focus。">Focus: Maze</button>
+        <button id="historyBackBtn" class="tool-chip" title="返回上一个相机 focus。">返回</button>
+        <button id="historyForwardBtn" class="tool-chip" title="前进到下一个相机 focus。">前进</button>
+        <button id="focusToggleBtn" class="tool-chip primary-tool" data-current="Focus: Maze" data-next="Focus: Bounds" title="在建筑区域中心和当前迷宫中心之间切换相机 focus。"></button>
       </header>
       <div id="viewerHost" class="viewer"></div>
       <div class="log-dock">
@@ -92,6 +95,7 @@ const logContent = document.querySelector<HTMLDivElement>("#logContent")!;
 const generateBtn = document.querySelector<HTMLButtonElement>("#generateBtn")!;
 const downloadBtn = document.querySelector<HTMLButtonElement>("#downloadBtn")!;
 const resetCameraBtn = document.querySelector<HTMLButtonElement>("#resetCameraBtn")!;
+const randomSeedBtn = document.querySelector<HTMLButtonElement>("#randomSeedBtn")!;
 const moveCenterBtn = document.querySelector<HTMLButtonElement>("#moveCenterBtn")!;
 const fitBoundsBtn = document.querySelector<HTMLButtonElement>("#fitBoundsBtn")!;
 const historyBackBtn = document.querySelector<HTMLButtonElement>("#historyBackBtn")!;
@@ -109,18 +113,23 @@ let csvText = railConfigCsv;
 let currentLayout: MazeLayout = JSON.parse(sampleLayoutRaw) as MazeLayout;
 let focusMode: "maze" | "bounds" = "maze";
 
+function markLatin(text: string): string {
+  const escape = (value: string) => value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]!);
+  return escape(text).replace(/[A-Za-z0-9_.:/()+,-]+/g, (match) => `<span class="latin">${match}</span>`);
+}
+
 viewer.onHover = (rail) => {
   if (!rail) {
-    detailContent.innerHTML = `<span class="muted">Hover a rail in the scene.</span>`;
+    detailContent.innerHTML = `<span class="muted">${markLatin("Hover a rail in the scene.")}</span>`;
     return;
   }
   detailContent.innerHTML = `
-    <div class="detail-row"><span>ID</span><strong>${rail.id}</strong></div>
-    <div class="detail-row"><span>Type</span><strong>${rail.type}</strong></div>
-    <div class="detail-row"><span>Rev</span><strong>${formatVec(rail.posRev)}</strong></div>
-    <div class="detail-row"><span>Abs</span><strong>${formatVec(rail.pos)}</strong></div>
-    <div class="detail-row"><span>Rot</span><strong>${rail.rot.p}/${rail.rot.y}/${rail.rot.r}</strong></div>
-    <div class="detail-row"><span>Diff</span><strong>${rail.diff.toFixed(2)}</strong></div>
+    <div class="detail-row"><span>${markLatin("ID")}</span><strong>${markLatin(String(rail.id))}</strong></div>
+    <div class="detail-row"><span>${markLatin("Type")}</span><strong>${markLatin(rail.type)}</strong></div>
+    <div class="detail-row"><span>${markLatin("Rev")}</span><strong>${markLatin(formatVec(rail.posRev))}</strong></div>
+    <div class="detail-row"><span>${markLatin("Abs")}</span><strong>${markLatin(formatVec(rail.pos))}</strong></div>
+    <div class="detail-row"><span>${markLatin("Rot")}</span><strong>${markLatin(`${rail.rot.p}/${rail.rot.y}/${rail.rot.r}`)}</strong></div>
+    <div class="detail-row"><span>${markLatin("Diff")}</span><strong>${markLatin(rail.diff.toFixed(2))}</strong></div>
   `;
 };
 
@@ -149,10 +158,10 @@ function setLayout(layout: MazeLayout): void {
   viewer.setBounds(currentBounds());
   viewer.setLayout(layout);
   statsContent.innerHTML = `
-    <div><span>Rails</span><strong>${layout.MapMeta.RailCount}</strong></div>
-    <div><span>Difficulty</span><strong>${layout.MapMeta.MazeDiff.toFixed(2)}</strong></div>
-    <div><span>Start</span><strong>${layout.Rail.filter((rail) => rail.Rail_ID.includes("Start")).length}</strong></div>
-    <div><span>End</span><strong>${layout.Rail.filter((rail) => rail.Rail_ID.includes("End")).length}</strong></div>
+    <div><span>${markLatin("Rails")}</span><strong>${markLatin(String(layout.MapMeta.RailCount))}</strong></div>
+    <div><span>${markLatin("Difficulty")}</span><strong>${markLatin(layout.MapMeta.MazeDiff.toFixed(2))}</strong></div>
+    <div><span>${markLatin("Start")}</span><strong>${markLatin(String(layout.Rail.filter((rail) => rail.Rail_ID.includes("Start")).length))}</strong></div>
+    <div><span>${markLatin("End")}</span><strong>${markLatin(String(layout.Rail.filter((rail) => rail.Rail_ID.includes("End")).length))}</strong></div>
   `;
 }
 
@@ -245,9 +254,25 @@ function fitLayoutBounds(): void {
 function renderLog(logs: { kind: string; message: string }[]): void {
   logContent.innerHTML = logs
     .slice(-80)
-    .map((entry) => `<div class="log-line ${entry.kind}">${entry.message}</div>`)
+    .map((entry) => `<div class="log-line ${entry.kind}">${markLatin(entry.message)}</div>`)
     .join("");
   logContent.scrollTop = logContent.scrollHeight;
+}
+
+function randomizeSeed(): void {
+  seedInput.value = String(Math.floor(Math.random() * 90000000) + 10000000);
+}
+
+function refreshBoundsOnly(): void {
+  viewer.setBounds(currentBounds());
+  viewer.setLayout(currentLayout);
+}
+
+function updateFocusButton(): void {
+  const current = focusMode === "maze" ? "Focus: Maze" : "Focus: Bounds";
+  const next = focusMode === "maze" ? "Focus: Bounds" : "Focus: Maze";
+  focusToggleBtn.dataset.current = current;
+  focusToggleBtn.dataset.next = next;
 }
 
 function downloadLayout(): void {
@@ -286,6 +311,7 @@ function fmt(value: number): string {
 generateBtn.addEventListener("click", generateLayout);
 downloadBtn.addEventListener("click", downloadLayout);
 resetCameraBtn.addEventListener("click", () => viewer.resetCamera());
+randomSeedBtn.addEventListener("click", randomizeSeed);
 moveCenterBtn.addEventListener("click", moveLayoutToCenter);
 fitBoundsBtn.addEventListener("click", fitLayoutBounds);
 historyBackBtn.addEventListener("click", () => viewer.goBack());
@@ -294,12 +320,12 @@ focusToggleBtn.addEventListener("click", () => {
   focusMode = focusMode === "maze" ? "bounds" : "maze";
   if (focusMode === "maze") {
     viewer.focusMaze();
-    focusToggleBtn.textContent = "Focus: Maze";
   } else {
     viewer.focusBounds(currentBounds());
-    focusToggleBtn.textContent = "Focus: Bounds";
   }
+  updateFocusButton();
 });
+[boundX, boundY, boundZ].forEach((input) => input.addEventListener("input", refreshBoundsOnly));
 dropZone.addEventListener("dragover", (event) => {
   event.preventDefault();
   dropZone.classList.add("is-over");
@@ -313,6 +339,7 @@ dropZone.addEventListener("drop", (event) => {
 });
 
 setLayout(currentLayout);
+updateFocusButton();
 renderLog([{ kind: "info", message: "Loaded existing maze_layout.json. Generate to run the TypeScript port." }]);
 gsap.from(".panel", { x: -20, opacity: 0, duration: 0.45, ease: "power3.out" });
 gsap.from(".log-dock", { y: 18, opacity: 0, duration: 0.45, delay: 0.12, ease: "power3.out" });
