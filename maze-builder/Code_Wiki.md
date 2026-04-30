@@ -1,17 +1,19 @@
 # 跃入迷城 (Fershli4) 迷宫生成器 - Code Wiki
 
 ## 1. 项目整体架构 (Project Architecture)
-这是一个基于 Python 的程序化内容生成 (PCG) 工具套件，专为 Roguelike 游戏（如“跃入迷城”）设计。它通过读取 UE5 导出的配置表，使用“难度驱动的生长算法”，自动生成逻辑严密、无穿插、保证连通性的 3D 轨道迷宫布局，并提供 H5 可视化工具和测试脚本以便快速检阅和验证。
+这是一个迷宫生成与检阅工具套件，专为 Roguelike 游戏（如“跃入迷城”）设计。当前包含 Python 版生成脚本、静态 H5 查看器，以及 TypeScript/Vite 版 Web 工具。它通过读取 UE5 导出的配置表，使用“难度驱动的生长算法”，自动生成逻辑严密、无穿插、保证连通性的 3D 轨道迷宫布局。
 
 核心流程：
 1. **数据输入**：读取 UE5 导出的 CSV 轨道配置表 (`rail_config.csv`)。
 2. **逻辑生成**：通过 `maze_generator.py` 中的 `MazeGenerator` 核心类进行迷宫的程序化生成，包含碰撞检测、边界检查、死路回溯等逻辑。
 3. **数据输出**：生成带有坐标、旋转、连接关系的 JSON 数据 (`maze_layout.json`)，以及 Markdown 格式的生成报告 (`maze_generation_report.md`)。
-4. **可视化与验证**：使用 `maze_viewer.html` 在浏览器中进行 3D 预览，使用 `test_maze.py` 验证生成的迷宫是否符合规则要求。
+4. **可视化与验证**：使用 `maze_viewer.html` 或 Vite Web 工具在浏览器中进行 3D 预览，使用 `test_maze.py` / `src/test/maze.test.ts` 验证生成逻辑。
 
 ## 2. 主要模块职责 (Main Modules Responsibilities)
 - **`maze_generator.py`**: [核心] 迷宫生成脚本，包含所有的配置读取、迷宫生长逻辑、碰撞与边界检测、回溯机制以及 JSON/Markdown 导出逻辑。
 - **`maze_viewer.html`**: [工具] H5 3D 迷宫查看器，基于 Three.js 开发。解析生成的 JSON 数据并渲染 3D 迷宫网格，支持拖拽、旋转、缩放以及难度颜色映射。
+- **`src/`**: [工具] TypeScript/Vite 版迷宫生成器与查看器，包含生成逻辑、CSV 解析、Three.js 查看器和 Vitest 测试。
+- **`package.json`**: [配置] Web 工具依赖与运行脚本。
 - **`test_maze.py`**: [测试] 验证生成的迷宫布局 (`maze_layout.json`) 是否符合要求，如起始/结束轨道数量、坐标系统有效性、难度值以及轨道类型分布等。
 - **`rail_config.csv`**: [配置] 轨道零件配置表，由 UE5 导出，定义所有可用的轨道零件（包含尺寸、基础难度、出口位置/旋转等信息）。
 - **`template_maze_layout.json`**: [参考] 生成的 JSON 数据结构参考模板。
@@ -47,7 +49,8 @@
 - **第三方库**:
   - `pandas`: 用于读取和解析 CSV 配置表 (`rail_config.csv`)。
 - **内置库**: `json`, `random`, `re`, `dataclasses`, `typing`, `pathlib`
-- **前端依赖** (仅 `maze_viewer.html`): `Three.js` (通过 CDN 引入)
+- **Node.js / npm**: 用于运行 TypeScript/Vite 版 Web 工具。
+- **前端依赖**: `three`, `gsap`, `vite`, `vitest`, `typescript`。
 
 ## 5. 项目运行方式 (How to Run)
 
@@ -59,14 +62,14 @@
    ```
 
 ### 5.2 生成迷宫数据
-在项目根目录运行生成脚本：
+在 `maze-builder/` 目录运行生成脚本：
 ```bash
 python maze_generator.py
 ```
 **运行结果**：
 - 控制台将输出生成过程、放置的起点、回溯次数等日志。
-- 根目录会生成 `maze_layout.json` 文件（最终的迷宫布局数据）。
-- 根目录会生成 `maze_generation_report.md` 文件（迷宫生成结果报告）。
+- `maze-builder/` 会生成或更新 `maze_layout.json` 文件（最终的迷宫布局数据）。
+- `maze-builder/` 会生成或更新 `maze_generation_report.md` 文件（迷宫生成结果报告）。
 
 ### 5.3 验证迷宫结构
 运行测试脚本验证生成的 `maze_layout.json` 是否符合规则：
@@ -75,7 +78,18 @@ python test_maze.py
 ```
 测试通过后，控制台将输出 `✅ 所有测试通过!` 等验证信息。
 
+运行 TypeScript/Vite 测试：
+```bash
+npm test
+```
+
 ### 5.4 3D 可视化检阅
 1. 使用现代浏览器（推荐 Chrome/Edge）打开 `maze_viewer.html`。
 2. 将生成的 `maze_layout.json` 文件拖拽到网页中即可渲染迷宫。
 3. **操作提示**：左键拖拽旋转视角，右键拖拽平移，滚轮缩放。不同颜色代表不同的区域难度。
+
+运行 TypeScript/Vite 版 Web 工具：
+```bash
+npm install
+npm run dev
+```

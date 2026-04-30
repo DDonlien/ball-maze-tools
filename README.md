@@ -17,6 +17,10 @@
 ```text
 .
 ├── maze-builder/              # [PCG] 迷宫生成、测试与可视化
+│   ├── src/                   # TypeScript/Vite 版迷宫生成器与查看器
+│   ├── package.json           # Web 工具依赖与脚本
+│   ├── index.html             # Web 工具入口
+│   ├── Code_Wiki.md           # 迷宫工具代码说明
 │   ├── maze_generator.py      # 迷宫生成脚本
 │   ├── maze_layout.json       # 生成结果
 │   ├── maze_generation_report.md # 生成报告
@@ -39,6 +43,7 @@
 ### 环境需求
 
 *   **Python**: 3.8 或更高版本
+*   **Node.js**: 用于运行 TypeScript/Vite 版 Web 工具
 *   **依赖库**: 
     *   `pandas` (用于迷宫生成)
     *   `numpy`, `matplotlib`, `scipy` (用于样条曲线生成)
@@ -50,6 +55,13 @@
 
 ```bash
 pip install pandas numpy matplotlib scipy
+```
+
+如果需要运行新版 Web 工具：
+
+```bash
+cd maze-builder
+npm install
 ```
 
 ### 使用方法
@@ -71,6 +83,13 @@ python maze-builder/maze_generator.py
 1.  使用浏览器（推荐 Chrome 或 Edge）打开 `maze-builder/maze_viewer.html`。
 2.  找到生成的 JSON 文件（在 `maze-builder/maze_layout.json`）。
 3.  **拖拽** JSON 文件到页面中央的虚线框内。
+
+也可以运行 TypeScript/Vite 版 Web 工具：
+
+```bash
+cd maze-builder
+npm run dev
+```
 
 #### 3. 运行测试
 
