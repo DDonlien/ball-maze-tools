@@ -23,6 +23,27 @@ describe("TypeScript maze port", () => {
     ].sort());
   });
 
+  it("keeps forward-up occupied cells above the start cell", () => {
+    const cells = calculateOccupiedCells("BP_Bump_FU_X2_Y1_Z2_Rail", new Vector3(0, 0, 0), new Vector3(2, 1, 2), 0);
+    expect(cells.sort()).toEqual([
+      [0, 0, 0],
+      [0, 0, 1],
+      [1, 0, 0],
+      [1, 0, 1],
+    ].sort());
+  });
+
+  it("keeps curve-down exits below their entry height", () => {
+    const config = loadConfigFromCsv(railConfigCsv);
+    const downCurves = [...config.values()].filter((rail) => rail.rowName.includes("_D90_"));
+    expect(downCurves.length).toBeGreaterThan(0);
+
+    for (const rail of downCurves) {
+      expect(rail.exitsLogic[0].LocalRot.p).toBeLessThan(0);
+      expect(rail.exitsLogic[0].Pos.z).toBeLessThan(0);
+    }
+  });
+
   it("generates a connected layout in the exported JSON shape", () => {
     const config = loadConfigFromCsv(railConfigCsv);
     const layout = new MazeGenerator(config, { seed: 20260425, targetDifficulty: 15 }).generate();
