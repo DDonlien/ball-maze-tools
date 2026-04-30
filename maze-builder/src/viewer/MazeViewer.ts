@@ -32,6 +32,9 @@ export class MazeViewer {
   private headMesh?: THREE.InstancedMesh;
   private exitMesh?: THREE.InstancedMesh;
   private activeLayout?: MazeLayout;
+  private bounds: Vec3Dict = { x: 4, y: 4, z: 1 };
+  private focusHistory: THREE.Vector3[] = [new THREE.Vector3(0, 0, 0)];
+  private focusHistoryIndex = 0;
   onHover?: (rail: RailMeta | null) => void;
 
   constructor(private host: HTMLElement) {
@@ -81,9 +84,71 @@ export class MazeViewer {
     gsap.fromTo(this.root.position, { z: -8 }, { z: 0, duration: 0.55, ease: "power3.out" });
   }
 
+  setBounds(bounds: Vec3Dict): void {
+    this.bounds = bounds;
+  }
+
   resetCamera(): void {
+    this.moveFocus(new THREE.Vector3(0, 0, 0), true);
     gsap.to(this.camera.position, { x: 130, y: -150, z: 115, duration: 0.6, ease: "power3.inOut" });
-    gsap.to(this.controls.target, { x: 0, y: 0, z: 0, duration: 0.6, ease: "power3.inOut" });
+  }
+
+  focusMaze(): void {
+    this.moveFocus(this.getMazeCenter(), true);
+  }
+
+  focusBounds(bounds: Vec3Dict): void {
+    this.moveFocus(new THREE.Vector3(0, 0, bounds.z * GRID_TO_WORLD_SCALE * 0.5), true);
+  }
+
+  goBack(): void {
+    if (this.focusHistoryIndex <= 0) return;
+    this.focusHistoryIndex -= 1;
+    this.moveFocus(this.focusHistory[this.focusHistoryIndex], false);
+  }
+
+  goForward(): void {
+    if (this.focusHistoryIndex >= this.focusHistory.length - 1) return;
+    this.focusHistoryIndex += 1;
+    this.moveFocus(this.focusHistory[this.focusHistoryIndex], false);
+  }
+
+  private moveFocus(target: THREE.Vector3, pushHistory: boolean): void {
+    const current = this.controls.target;
+    const cameraDelta = this.camera.position.clone().sub(current);
+
+    if (pushHistory) {
+      this.focusHistory = this.focusHistory.slice(0, this.focusHistoryIndex + 1);
+      const last = this.focusHistory[this.focusHistory.length - 1];
+      if (!last || last.distanceTo(target) > 0.01) {
+        this.focusHistory.push(target.clone());
+        this.focusHistoryIndex = this.focusHistory.length - 1;
+      }
+    }
+
+    gsap.to(this.controls.target, { x: target.x, y: target.y, z: target.z, duration: 0.55, ease: "power3.inOut" });
+    gsap.to(this.camera.position, {
+      x: target.x + cameraDelta.x,
+      y: target.y + cameraDelta.y,
+      z: target.z + cameraDelta.z,
+      duration: 0.55,
+      ease: "power3.inOut",
+    });
+  }
+
+  private getMazeCenter(): THREE.Vector3 {
+    const rails = this.activeLayout?.Rail ?? [];
+    const cells = rails.flatMap((rail) => (rail.Occupied_Cells_Rev.length > 0 ? rail.Occupied_Cells_Rev : [rail.Pos_Rev]));
+    if (cells.length === 0) return new THREE.Vector3(0, 0, 0);
+
+    const xs = cells.map((cell) => cell.x * GRID_TO_WORLD_SCALE);
+    const ys = cells.map((cell) => -cell.y * GRID_TO_WORLD_SCALE);
+    const zs = cells.map((cell) => cell.z * GRID_TO_WORLD_SCALE);
+    return new THREE.Vector3(
+      (Math.min(...xs) + Math.max(...xs)) / 2,
+      (Math.min(...ys) + Math.max(...ys)) / 2,
+      (Math.min(...zs) + Math.max(...zs)) / 2,
+    );
   }
 
   private setupBaseScene(): void {
@@ -107,12 +172,12 @@ export class MazeViewer {
   private drawBounds(): void {
     if (!this.root) return;
     const half = GRID_TO_WORLD_SCALE / 2;
-    const minX = -4 * GRID_TO_WORLD_SCALE - half;
-    const maxX = 4 * GRID_TO_WORLD_SCALE + half;
-    const minY = -4 * GRID_TO_WORLD_SCALE - half;
-    const maxY = 4 * GRID_TO_WORLD_SCALE + half;
-    const minZ = -1 * GRID_TO_WORLD_SCALE - half;
-    const maxZ = 1 * GRID_TO_WORLD_SCALE + half;
+    const minX = -this.bounds.x * GRID_TO_WORLD_SCALE - half;
+    const maxX = this.bounds.x * GRID_TO_WORLD_SCALE + half;
+    const minY = -this.bounds.y * GRID_TO_WORLD_SCALE - half;
+    const maxY = this.bounds.y * GRID_TO_WORLD_SCALE + half;
+    const minZ = -this.bounds.z * GRID_TO_WORLD_SCALE - half;
+    const maxZ = this.bounds.z * GRID_TO_WORLD_SCALE + half;
     const boxGeo = new THREE.BoxGeometry(maxX - minX, maxY - minY, maxZ - minZ);
     const edges = new THREE.EdgesGeometry(boxGeo);
     const line = new THREE.LineSegments(

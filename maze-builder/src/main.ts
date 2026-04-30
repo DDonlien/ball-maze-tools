@@ -3,8 +3,8 @@ import railConfigCsv from "../rail_config.csv?raw";
 import sampleLayoutRaw from "../maze_layout.json?raw";
 import { loadConfigFromCsv } from "./maze/csv";
 import { MazeGenerator } from "./maze/generator";
-import { DEFAULT_GENERATOR_OPTIONS } from "./maze/constants";
-import { MazeLayout, Vector3 } from "./maze/types";
+import { DEFAULT_GENERATOR_OPTIONS, GRID_TO_WORLD_SCALE } from "./maze/constants";
+import { MazeLayout, Vec3Dict, Vector3 } from "./maze/types";
 import { MazeViewer } from "./viewer/MazeViewer";
 import "./styles/main.css";
 
@@ -24,21 +24,26 @@ app.innerHTML = `
       </div>
 
       <div class="panel-body">
+        <section class="drop" id="dropZone" data-tip="拖入 UE 导出的 CSV 会重新生成配置；拖入 maze JSON 会直接打开布局。">
+          <strong>Drop CSV or maze JSON</strong>
+          <span>CSV regenerates config. JSON opens a layout.</span>
+        </section>
+
         <section class="section">
           <div class="section-head">
             <h2>Generator</h2>
-            <button id="generateBtn" class="primary">Generate</button>
+            <button id="generateBtn" class="primary" data-tip="使用当前 CSV、seed、目标难度和边界重新生成迷宫。">Generate</button>
           </div>
           <label class="field">
-            <span>Seed</span>
+            <span data-tip="随机种子。相同 CSV、参数和 seed 会生成同一套迷宫，方便复现和调试。">Seed</span>
             <input id="seedInput" type="number" value="20260425" />
           </label>
           <label class="field">
-            <span>Target difficulty</span>
+            <span data-tip="目标总难度。生成器达到该难度后会尝试收尾并放置终点。">Target difficulty</span>
             <input id="difficultyInput" type="number" min="1" step="1" value="${DEFAULT_GENERATOR_OPTIONS.targetDifficulty}" />
           </label>
           <label class="field">
-            <span>Bounds X/Y/Z</span>
+            <span data-tip="生成边界，单位是逻辑 grid。X/Y/Z 分别限制迷宫可占用的半宽范围。">Bounds X/Y/Z</span>
             <div class="triple">
               <input id="boundX" type="number" value="${DEFAULT_GENERATOR_OPTIONS.bounds.x}" />
               <input id="boundY" type="number" value="${DEFAULT_GENERATOR_OPTIONS.bounds.y}" />
@@ -46,14 +51,11 @@ app.innerHTML = `
             </div>
           </label>
           <div class="actions">
-            <button id="downloadBtn">Download JSON</button>
-            <button id="resetCameraBtn">Reset View</button>
+            <button id="moveCenterBtn" data-tip="按 grid 整数偏移当前迷宫，使布局尽量落在当前 bounds 的中心。">Move to center</button>
+            <button id="fitBoundsBtn" data-tip="把 bounds 收缩到能容纳当前迷宫的最小 grid 尺寸，并重新居中布局。">Fit size</button>
+            <button id="downloadBtn" data-tip="下载当前迷宫 JSON。">Download JSON</button>
+            <button id="resetCameraBtn" data-tip="重置相机视角。">Reset View</button>
           </div>
-        </section>
-
-        <section class="drop" id="dropZone">
-          <strong>Drop CSV or maze JSON</strong>
-          <span>CSV regenerates config. JSON opens a layout.</span>
         </section>
 
         <section class="section stats">
@@ -70,11 +72,9 @@ app.innerHTML = `
 
     <section class="viewport">
       <header class="topbar">
-        <div class="search-label">搜索</div>
-        <button class="filter-chip">播放状态 <span>⌄</span></button>
-        <button class="filter-chip">对象 <span>⌄</span></button>
-        <button class="filter-chip">表现类型 <span>⌄</span></button>
-        <button class="reset-chip" id="topResetBtn">重置</button>
+        <button id="historyBackBtn" class="tool-chip" data-tip="返回上一个相机 focus。">返回</button>
+        <button id="historyForwardBtn" class="tool-chip" data-tip="前进到下一个相机 focus。">前进</button>
+        <button id="focusToggleBtn" class="tool-chip primary-tool" data-tip="在建筑区域中心和当前迷宫中心之间切换相机 focus。">Focus: Maze</button>
       </header>
       <div id="viewerHost" class="viewer"></div>
       <div class="log-dock">
@@ -92,7 +92,11 @@ const logContent = document.querySelector<HTMLDivElement>("#logContent")!;
 const generateBtn = document.querySelector<HTMLButtonElement>("#generateBtn")!;
 const downloadBtn = document.querySelector<HTMLButtonElement>("#downloadBtn")!;
 const resetCameraBtn = document.querySelector<HTMLButtonElement>("#resetCameraBtn")!;
-const topResetBtn = document.querySelector<HTMLButtonElement>("#topResetBtn")!;
+const moveCenterBtn = document.querySelector<HTMLButtonElement>("#moveCenterBtn")!;
+const fitBoundsBtn = document.querySelector<HTMLButtonElement>("#fitBoundsBtn")!;
+const historyBackBtn = document.querySelector<HTMLButtonElement>("#historyBackBtn")!;
+const historyForwardBtn = document.querySelector<HTMLButtonElement>("#historyForwardBtn")!;
+const focusToggleBtn = document.querySelector<HTMLButtonElement>("#focusToggleBtn")!;
 const dropZone = document.querySelector<HTMLDivElement>("#dropZone")!;
 const seedInput = document.querySelector<HTMLInputElement>("#seedInput")!;
 const difficultyInput = document.querySelector<HTMLInputElement>("#difficultyInput")!;
@@ -103,6 +107,7 @@ const boundZ = document.querySelector<HTMLInputElement>("#boundZ")!;
 const viewer = new MazeViewer(viewerHost);
 let csvText = railConfigCsv;
 let currentLayout: MazeLayout = JSON.parse(sampleLayoutRaw) as MazeLayout;
+let focusMode: "maze" | "bounds" = "maze";
 
 viewer.onHover = (rail) => {
   if (!rail) {
@@ -141,6 +146,7 @@ function generateLayout(): void {
 
 function setLayout(layout: MazeLayout): void {
   currentLayout = layout;
+  viewer.setBounds(currentBounds());
   viewer.setLayout(layout);
   statsContent.innerHTML = `
     <div><span>Rails</span><strong>${layout.MapMeta.RailCount}</strong></div>
@@ -148,6 +154,92 @@ function setLayout(layout: MazeLayout): void {
     <div><span>Start</span><strong>${layout.Rail.filter((rail) => rail.Rail_ID.includes("Start")).length}</strong></div>
     <div><span>End</span><strong>${layout.Rail.filter((rail) => rail.Rail_ID.includes("End")).length}</strong></div>
   `;
+}
+
+function cloneLayout(layout: MazeLayout): MazeLayout {
+  return JSON.parse(JSON.stringify(layout)) as MazeLayout;
+}
+
+function worldDict(vec: Vec3Dict): Vec3Dict {
+  return {
+    x: Number((vec.x * GRID_TO_WORLD_SCALE).toFixed(8)),
+    y: Number((vec.y * GRID_TO_WORLD_SCALE).toFixed(8)),
+    z: Number((vec.z * GRID_TO_WORLD_SCALE).toFixed(8)),
+  };
+}
+
+function layoutBounds(layout: MazeLayout): { min: Vec3Dict; max: Vec3Dict } {
+  const cells = layout.Rail.flatMap((rail) => (rail.Occupied_Cells_Rev.length > 0 ? rail.Occupied_Cells_Rev : [rail.Pos_Rev]));
+  return {
+    min: {
+      x: Math.min(...cells.map((cell) => cell.x)),
+      y: Math.min(...cells.map((cell) => cell.y)),
+      z: Math.min(...cells.map((cell) => cell.z)),
+    },
+    max: {
+      x: Math.max(...cells.map((cell) => cell.x)),
+      y: Math.max(...cells.map((cell) => cell.y)),
+      z: Math.max(...cells.map((cell) => cell.z)),
+    },
+  };
+}
+
+function clamp(value: number, min: number, max: number): number {
+  const low = Math.min(min, max);
+  const high = Math.max(min, max);
+  return Math.max(low, Math.min(high, value));
+}
+
+function currentBounds(): Vec3Dict {
+  return {
+    x: Math.max(0, Number(boundX.value) || DEFAULT_GENERATOR_OPTIONS.bounds.x),
+    y: Math.max(0, Number(boundY.value) || DEFAULT_GENERATOR_OPTIONS.bounds.y),
+    z: Math.max(0, Number(boundZ.value) || DEFAULT_GENERATOR_OPTIONS.bounds.z),
+  };
+}
+
+function centerOffsetForBounds(layout: MazeLayout, bounds: Vec3Dict): Vec3Dict {
+  const box = layoutBounds(layout);
+  return {
+    x: clamp(Math.round(-(box.min.x + box.max.x) / 2), -bounds.x - box.min.x, bounds.x - box.max.x),
+    y: clamp(Math.round(-(box.min.y + box.max.y) / 2), -bounds.y - box.min.y, bounds.y - box.max.y),
+    z: clamp(Math.round(-(box.min.z + box.max.z) / 2), -bounds.z - box.min.z, bounds.z - box.max.z),
+  };
+}
+
+function translateLayout(layout: MazeLayout, offset: Vec3Dict): MazeLayout {
+  const next = cloneLayout(layout);
+  next.Rail.forEach((rail) => {
+    rail.Pos_Rev = { x: rail.Pos_Rev.x + offset.x, y: rail.Pos_Rev.y + offset.y, z: rail.Pos_Rev.z + offset.z };
+    rail.Pos_Abs = worldDict(rail.Pos_Rev);
+    rail.Occupied_Cells_Rev = rail.Occupied_Cells_Rev.map((cell) => ({ x: cell.x + offset.x, y: cell.y + offset.y, z: cell.z + offset.z }));
+    rail.Exit = rail.Exit.map((exit) => {
+      const exitPos = { x: exit.Exit_Pos_Rev.x + offset.x, y: exit.Exit_Pos_Rev.y + offset.y, z: exit.Exit_Pos_Rev.z + offset.z };
+      return { ...exit, Exit_Pos_Rev: exitPos, Exit_Pos_Abs: worldDict(exitPos) };
+    });
+  });
+  return next;
+}
+
+function moveLayoutToCenter(): void {
+  const offset = centerOffsetForBounds(currentLayout, currentBounds());
+  setLayout(translateLayout(currentLayout, offset));
+  renderLog([{ kind: "info", message: `Moved layout by grid offset (${offset.x}, ${offset.y}, ${offset.z}).` }]);
+}
+
+function fitLayoutBounds(): void {
+  const box = layoutBounds(currentLayout);
+  const fitted = {
+    x: Math.max(0, Math.ceil((box.max.x - box.min.x) / 2)),
+    y: Math.max(0, Math.ceil((box.max.y - box.min.y) / 2)),
+    z: Math.max(0, Math.ceil((box.max.z - box.min.z) / 2)),
+  };
+  boundX.value = String(fitted.x);
+  boundY.value = String(fitted.y);
+  boundZ.value = String(fitted.z);
+  const offset = centerOffsetForBounds(currentLayout, fitted);
+  setLayout(translateLayout(currentLayout, offset));
+  renderLog([{ kind: "info", message: `Fitted bounds to ${fitted.x}/${fitted.y}/${fitted.z} and centered by (${offset.x}, ${offset.y}, ${offset.z}).` }]);
 }
 
 function renderLog(logs: { kind: string; message: string }[]): void {
@@ -194,7 +286,20 @@ function fmt(value: number): string {
 generateBtn.addEventListener("click", generateLayout);
 downloadBtn.addEventListener("click", downloadLayout);
 resetCameraBtn.addEventListener("click", () => viewer.resetCamera());
-topResetBtn.addEventListener("click", () => viewer.resetCamera());
+moveCenterBtn.addEventListener("click", moveLayoutToCenter);
+fitBoundsBtn.addEventListener("click", fitLayoutBounds);
+historyBackBtn.addEventListener("click", () => viewer.goBack());
+historyForwardBtn.addEventListener("click", () => viewer.goForward());
+focusToggleBtn.addEventListener("click", () => {
+  focusMode = focusMode === "maze" ? "bounds" : "maze";
+  if (focusMode === "maze") {
+    viewer.focusMaze();
+    focusToggleBtn.textContent = "Focus: Maze";
+  } else {
+    viewer.focusBounds(currentBounds());
+    focusToggleBtn.textContent = "Focus: Bounds";
+  }
+});
 dropZone.addEventListener("dragover", (event) => {
   event.preventDefault();
   dropZone.classList.add("is-over");
