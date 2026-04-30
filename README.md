@@ -16,13 +16,22 @@
 
 ```text
 .
-├── maze_generator.py          # [核心] 迷宫生成脚本
-├── render_maze.html           # [工具] H5 3D 迷宫查看器 (基于 Three.js)
-├── rail_config.csv            # [配置] 轨道零件配置表 (UE导出)
-├── template_maze_layout.json  # [参考] JSON 数据结构模板
-├── README.md                  # [文档] 项目说明文档
-└── output/                    # [输出] 生成结果目录
-    └── maze_layout_xxxx.json  # 自动生成的迷宫文件
+├── maze-builder/              # [PCG] 迷宫生成、测试与可视化
+│   ├── maze_generator.py      # 迷宫生成脚本
+│   ├── maze_layout.json       # 生成结果
+│   ├── maze_generation_report.md # 生成报告
+│   ├── rail_config.csv        # 轨道零件配置表 (UE导出)
+│   ├── maze_viewer.html       # H5 3D 迷宫查看器
+│   └── test_maze.py           # 单元测试脚本
+├── hermite-spline-generator/  # [数学] Hermite 曲线生成工具
+│   ├── hermite_sample_cal.py  # Hermite 曲线采样
+│   ├── hermite_vector_fit.py  # 向量拟合
+│   └── auto_generate_curves.py # 自动生成曲线
+├── asset-pivot-editor/        # [UE] 批量编辑资源 Pivot
+│   └── pivot_set_buttom.py
+├── texture-assigner/          # [UE] 自动分配材质与贴图
+│   └── auto_assign.py
+└── README.md                  # 项目说明文档
 ```
 
 ## 🛠️ 快速开始 (Getting Started)
@@ -30,7 +39,9 @@
 ### 环境需求
 
 *   **Python**: 3.8 或更高版本
-*   **依赖库**: `pandas`
+*   **依赖库**: 
+    *   `pandas` (用于迷宫生成)
+    *   `numpy`, `matplotlib`, `scipy` (用于样条曲线生成)
 
 ### 安装
 
@@ -38,27 +49,36 @@
 2.  安装必要的 Python 依赖：
 
 ```bash
-pip install pandas
+pip install pandas numpy matplotlib scipy
 ```
 
 ### 使用方法
 
 #### 1. 生成迷宫
 
-直接运行 Python 脚本。脚本会自动加载同目录下的 `rail_config.csv`。
+在项目根目录下运行脚本：
 
 ```bash
-python maze_generator.py
+python maze-builder/maze_generator.py
 ```
 
-*   **输出**: 成功执行后，会在 `output/` 目录下生成带有时间戳的 JSON 文件，例如 `maze_layout_202401031530.json`。
-*   **日志**: 控制台会打印生成过程，包括起点选择、生成进度、死路回溯以及最终的难度统计。
+*   **配置加载**: 脚本会优先读取 `maze-builder/rail_config.csv`。
+*   **输出**: 成功执行后，会在 `maze-builder/` 目录下生成 `maze_layout.json` 和 `maze_generation_report.md`。
+*   **日志**: 控制台会打印生成过程。
 
 #### 2. 可视化检阅
 
-1.  使用浏览器（推荐 Chrome 或 Edge）打开 `render_maze.html`。
-2.  找到生成的 JSON 文件（在 `output/` 文件夹中）。
+1.  使用浏览器（推荐 Chrome 或 Edge）打开 `maze-builder/maze_viewer.html`。
+2.  找到生成的 JSON 文件（在 `maze-builder/maze_layout.json`）。
 3.  **拖拽** JSON 文件到页面中央的虚线框内。
+
+#### 3. 运行测试
+
+检查生成的迷宫是否符合规范：
+
+```bash
+python maze-builder/test_maze.py
+```
 
 **操作方式**:
 *   **左键拖拽**: 旋转视角

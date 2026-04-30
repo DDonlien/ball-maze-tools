@@ -18,11 +18,17 @@ def test_maze_layout():
     """
     
     # 加载生成的迷宫布局
+    script_dir = Path(__file__).resolve().parent
     layout_path = Path("maze_layout.json")
     if not layout_path.exists():
-        print("错误: 找不到 maze_layout.json 文件")
-        print("请先运行 python3 generator.py 生成迷宫")
-        return False
+        # 尝试在 maze-builder 工具目录中查找
+        possible_path = script_dir / "maze_layout.json"
+        if possible_path.exists():
+            layout_path = possible_path
+        else:
+            print("错误: 找不到 maze_layout.json 文件")
+            print("请先运行 python3 maze-builder/maze_generator.py 生成迷宫")
+            return False
     
     with open(layout_path, 'r', encoding='utf-8') as f:
         placements = json.load(f)

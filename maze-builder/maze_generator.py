@@ -3,6 +3,7 @@ import random
 import re
 import pandas as pd
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import List, Dict, Set, Tuple, Optional
 
 # ==========================================
@@ -1027,10 +1028,11 @@ class MazeGenerator:
             json.dump(out_data, f, indent=4)
         print(f"Exported to {path}")
 
-        # 写入 Markdown 报告
-        with open("maze_generation_report.md", "w") as f:
+        # 写入 Markdown 报告到 JSON 同级目录
+        report_path = Path(path).with_name("maze_generation_report.md")
+        with open(report_path, "w") as f:
             f.write("\n".join(report_lines))
-        print("Exported Report to maze_generation_report.md")
+        print(f"Exported Report to {report_path}")
 
 # ==========================================
 # 6. 程序入口 (Main Entry)
@@ -1039,16 +1041,32 @@ class MazeGenerator:
 # 6.1 主执行块
 if __name__ == "__main__":
     try:
+        # 获取脚本所在目录
+        script_dir = Path(__file__).resolve().parent
+        # 项目根目录
+        project_root = script_dir.parent
+        
+        # 尝试查找 rail_config.csv
+        config_path = script_dir / 'rail_config.csv'
+        if not config_path.exists():
+            config_path = project_root / 'rail_config.csv'
+        if not config_path.exists():
+            config_path = Path.cwd() / 'rail_config.csv'
+            
         # 加载配置
-        configs = load_config('rail_config.csv')
+        configs = load_config(str(config_path))
+        
         # 初始化生成器
         gen = MazeGenerator(configs)
+        
         # 执行生成
         gen.generate()
+        
+        # 导出结果到脚本同级目录
+        output_path = script_dir / 'maze_layout.json'
+        gen.export_json(str(output_path))
+        
     except Exception as e:
         import traceback
         traceback.print_exc()
         print(f"Error: {e}")
-    finally:
-        if 'gen' in locals():
-            gen.export_json('maze_layout.json')
