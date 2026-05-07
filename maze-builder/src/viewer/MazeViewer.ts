@@ -11,6 +11,8 @@ interface RailMeta {
   posRev: Vec3Dict;
   rot: { p: number; y: number; r: number };
   diff: number;
+  cumulativeDiff: number;
+  segmentDiff: number;
 }
 
 export class MazeViewer {
@@ -26,6 +28,7 @@ export class MazeViewer {
   private railDataMap = new Map<number, RailMeta>();
   private railArrowMap = new Map<number, number[]>();
   private lastHoveredId: number | null = null;
+  private selectedId: number | null = null;
   private arrowColorCache = new Map<number, THREE.Color>();
   private arrowScaleCache = new Map<string, THREE.Matrix4>();
   private shaftMesh?: THREE.InstancedMesh;
@@ -38,6 +41,7 @@ export class MazeViewer {
   private projectionMode: "perspective" | "orthographic" = "perspective";
   private readonly orthoHeight = 260;
   onHover?: (rail: RailMeta | null) => void;
+  onSelect?: (rail: RailMeta | null) => void;
 
   constructor(private host: HTMLElement) {
     this.scene.background = new THREE.Color(0xfbfbf8);
@@ -56,12 +60,14 @@ export class MazeViewer {
 
     this.setupBaseScene();
     this.renderer.domElement.addEventListener("mousemove", this.handleMouseMove);
+    this.renderer.domElement.addEventListener("click", this.handleClick);
     window.addEventListener("resize", this.resize);
     this.animate();
   }
 
   dispose(): void {
     this.renderer.domElement.removeEventListener("mousemove", this.handleMouseMove);
+    this.renderer.domElement.removeEventListener("click", this.handleClick);
     window.removeEventListener("resize", this.resize);
     this.renderer.dispose();
     this.host.innerHTML = "";
@@ -77,6 +83,7 @@ export class MazeViewer {
     this.railDataMap.clear();
     this.railArrowMap.clear();
     this.lastHoveredId = null;
+    this.selectedId = null;
     this.arrowColorCache.clear();
     this.arrowScaleCache.clear();
 
@@ -269,6 +276,7 @@ export class MazeViewer {
 
   private drawRails(rails: MazeRailJson[]): void {
     if (!this.root) return;
+    const difficultyByRail = this.calculateRailDifficulties(rails);
     const arrowGeos = this.createArrowGeometries();
     const arrowCount =
       rails.reduce((count, rail) => count + rail.Exit.filter((exit) => exit.Exit_Pos_Abs).length + (rail.Prev_Index !== -1 ? 1 : 0), 0) || 1;
@@ -306,6 +314,8 @@ export class MazeViewer {
         posRev: rail.Pos_Rev,
         rot: rail.Rot_Abs,
         diff: rail.Diff_Act,
+        cumulativeDiff: difficultyByRail.get(rail.Rail_Index)?.cumulativeDiff ?? rail.Diff_Act,
+        segmentDiff: difficultyByRail.get(rail.Rail_Index)?.segmentDiff ?? rail.Diff_Act,
       };
       this.railDataMap.set(rail.Rail_Index, meta);
       this.blockMesh!.userData.instanceMap[blockIdx] = meta;
@@ -355,6 +365,29 @@ export class MazeViewer {
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     }
+  }
+
+  private calculateRailDifficulties(rails: MazeRailJson[]): Map<number, { cumulativeDiff: number; segmentDiff: number }> {
+    const result = new Map<number, { cumulativeDiff: number; segmentDiff: number }>();
+    let cumulativeDiff = 0;
+    let segmentDiff = 0;
+
+    [...rails]
+      .sort((a, b) => a.Rail_Index - b.Rail_Index)
+      .forEach((rail) => {
+        cumulativeDiff += rail.Diff_Act;
+        segmentDiff += rail.Diff_Act;
+        result.set(rail.Rail_Index, {
+          cumulativeDiff,
+          segmentDiff,
+        });
+
+        if (rail.Rail_ID.toLowerCase().includes("checkpoint")) {
+          segmentDiff = 0;
+        }
+      });
+
+    return result;
   }
 
   private railBounds(rail: MazeRailJson): { center: THREE.Vector3; size: THREE.Vector3 } {
@@ -421,7 +454,7 @@ export class MazeViewer {
     canvas.height = 128;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    ctx.font = "700 58px ui-monospace, SFMono-Regular, Menlo, monospace";
+    ctx.font = '700 58px "JetBrains Mono", "Maple Mono NF CN", "Maple Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
     ctx.fillStyle = "white";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -439,6 +472,18 @@ export class MazeViewer {
   }
 
   private handleMouseMove = (event: MouseEvent): void => {
+    const found = this.pickRail(event);
+    if (this.selectedId === null) this.setHover(found?.id ?? null);
+    this.onHover?.(found);
+  };
+
+  private handleClick = (event: MouseEvent): void => {
+    const found = this.pickRail(event);
+    this.setSelection(found?.id ?? null);
+    this.onSelect?.(found);
+  };
+
+  private pickRail(event: MouseEvent): RailMeta | null {
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -458,9 +503,13 @@ export class MazeViewer {
       }
     }
 
-    this.setHover(found?.id ?? null);
-    this.onHover?.(found);
-  };
+    return found;
+  }
+
+  private setSelection(id: number | null): void {
+    this.selectedId = id;
+    this.setHover(id);
+  }
 
   private setHover(id: number | null): void {
     if (this.lastHoveredId === id) return;

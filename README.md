@@ -1,210 +1,83 @@
-# Fershli4 Maze Generator & Viewer
+# Ball Maze (迷宫球) 工具集
 
-这是一个基于 Python 的程序化内容生成 (PCG) 工具套件，专为 Roguelike 游戏（如“跃入迷城”）设计。它负责读取 UE5 导出的配置表，生成逻辑严密的 3D 迷宫布局，并提供 H5 可视化工具以便快速检阅。
+这是为游戏 Ball Maze（迷宫球）准备的一系列便捷开发与程序化内容生成 (PCG) 工具套件。涵盖了迷宫生成、UE关卡互导、美术资产自动化处理以及样条曲线计算等多个环节，极大地提高了开发与迭代效率。
 
-## ✨ 主要特性 (Features)
+## 📁 包含工具概览
 
-*   **程序化生成 (PCG)**: 基于“难度驱动的生长算法”，自动构建复杂的 3D 轨道迷宫。
-*   **UE5 工作流兼容**: 直接读取 UE5 导出的 CSV 轨道配置，输出可直接导入 UE5 的 JSON 数据。
-*   **严密的逻辑校验**: 
-    *   **全整数逻辑坐标**: 杜绝浮点数误差带来的对齐问题。
-    *   **AABB 碰撞检测**: 确保生成的轨道互不穿插。
-    *   **连通性保证**: 自动回溯死路，确保路径有效。
-*   **Web 可视化**: 内置 Three.js 开发的 H5 查看器，无需启动引擎即可快速预览迷宫结构和难度分布。
+- **Maze Builder (迷宫生成与可视化)**: 核心PCG生成器，支持难度驱动的 3D 轨道迷宫生成，JSON 文件导入导出，并带 Web H5 预览。
+- **JSON Rail Exporter (关卡导出器)**: UE 关卡导出 JSON，方便保存手工拼装的迷宫。
+- **JSON Rail Importer (关卡导入器)**: 读取 JSON，自动在 UE 关卡中生成和组装迷宫。
+- **Asset Pivot Editor (资产原点编辑器)**: 批量修改 UE Static Mesh 资源的 Pivot 坐标。
+- **Texture Assigner (材质自动分配器)**: 自动将贴图、材质实例与静态网格体互相绑定。
+- **Hermite Spline Generator (Hermite 曲线生成器)**: 用于平滑轨道与曲线计算的 Web 可视化编辑器。
 
-## 📁 项目结构 (Project Structure)
+---
 
-```text
-.
-├── maze-builder/              # [PCG] 迷宫生成、测试与可视化
-│   ├── src/                   # TypeScript/Vite 版迷宫生成器与查看器
-│   ├── package.json           # Web 工具依赖与脚本
-│   ├── index.html             # Web 工具入口
-│   ├── Code_Wiki.md           # 迷宫工具代码说明
-│   ├── maze_generator.py      # 迷宫生成脚本
-│   ├── maze_layout.json       # 生成结果
-│   ├── maze_generation_report.md # 生成报告
-│   ├── rail_config.csv        # 轨道零件配置表 (UE导出)
-│   ├── maze_viewer.html       # H5 3D 迷宫查看器
-│   └── test_maze.py           # 单元测试脚本
-├── hermite-spline-generator/  # [数学] Hermite 曲线生成工具
-│   ├── hermite_sample_cal.py  # Hermite 曲线采样
-│   ├── hermite_vector_fit.py  # 向量拟合
-│   └── auto_generate_curves.py # 自动生成曲线
-├── asset-pivot-editor/        # [UE] 批量编辑资源 Pivot
-│   └── pivot_set_buttom.py
-├── texture-assigner/          # [UE] 自动分配材质与贴图
-│   └── auto_assign.py
-└── README.md                  # 项目说明文档
-```
+## 🛠️ 工具详情
 
-## 🛠️ 快速开始 (Getting Started)
+### 1. Maze Builder (迷宫生成与可视化)
+**功能与开发简介**: 
+核心的程序化内容生成 (PCG) 工具，负责读取轨道配置表（`rail_config.csv`），基于“难度驱动的生长算法”，自动构建无穿插、逻辑严密的 3D 轨道迷宫布局，并提供一个基于 TypeScript/Vite 和 Three.js 的前端页面用于快速可视化预览（无需打开引擎）。
+**使用方法**: 
+- **生成**: 在项目根目录下运行 `python maze-builder/maze_generator.py`，会生成 `maze_layout.json`。
+- **可视化**: 运行 `cd maze-builder && npm install && npm run dev` 启动新版前端工具，或直接用浏览器打开 `maze_viewer.html` 拖入 JSON。
+- **Web 版 Seed 规则**: 新版前端的 seed 是完整生成配置编码，格式为 `bm01-random-difficulty-checkpoints-spins-bounds`。所有字段均使用小写 base36（数字 + 英文字母），并用 `-` 分割。
+  - `bm01`: seed 格式版本。
+  - `random`: 6 位随机性字段，用于初始化确定性随机数生成器。
+  - `difficulty`: 2 位目标总难度。
+  - `checkpoints`: 2 位 checkpoint 数量。
+  - `spins`: 2 位允许非 0 自旋的最大次数。
+  - `bounds`: 6 位边界尺寸，按 `xx yy zz` 各 2 位拼接，例如 `0d0905` 表示 `13 / 9 / 5`。
+  - 示例: `bm01-0d2wnk-0o-03-00-0d0905` 表示 `random=790943075`、`difficulty=24`、`checkpoints=3`、`spins=0`、`bounds=13/9/5`。
+- **Seed 复现机制**: `random` 字段不是布局本身，而是 `SeededRandom` 的初始状态。生成器内部使用线性同余随机数推进状态：`state = (1664525 * state + 1013904223) >>> 0`。同一个 seed 会让 Start Rail、起点位置、开放连接点选择、候选轨道选择等随机决策按同样顺序重放。要严格复现迷宫，需要同时保持 seed、`rail_config.csv`、生成器代码版本一致。
+**最近更新**: 
+优化了生长逻辑，移除了由于浮点数产生的对齐问题，全量升级为整数逻辑坐标。重构了基于 Vite 的前端可视化工具，提升了预览性能和交互体验。
 
-### 环境需求
+### 2. JSON Rail Exporter (关卡导出器)
+**功能与开发简介**: 
+UE (Unreal Engine) 编辑器内的自动化 Python 脚本。它能够遍历当前关卡中的 `BP_Rail` 实例，将其相对世界坐标、旋转和零件ID等逻辑信息提取并导出为符合 Maze Builder 标准的 JSON 文件。常用于把手工在 UE 内调整后的迷宫布局转化为数据格式。
+**使用方法**: 
+在 UE 的 Python 控制台或 Script Editor 中运行 `json-rail-exporter/export_level_rails_to_json.py`。默认会在 `maze-builder` 目录下生成 `exported_level_rails.json`。
+**最近更新**: 
+新增了针对 `BP_MazeBoundary` 和 `BP_MazeBottom` 等环境辅助 Actor 的识别和导出功能，更全面地保留了关卡结构元数据。支持了多种 Actor Label 与属性名作为识别依据的 Fallback 机制。
 
-*   **Python**: 3.8 或更高版本
-*   **Node.js**: 用于运行 TypeScript/Vite 版 Web 工具
-*   **依赖库**: 
-    *   `pandas` (用于迷宫生成)
-    *   `numpy`, `matplotlib`, `scipy` (用于样条曲线生成)
+### 3. JSON Rail Importer (关卡导入器)
+**功能与开发简介**: 
+与导出器对应的 UE 编辑器内自动化工具。读取 `maze_layout.json`，通过映射配置表 (`rail_config.csv`) 自动在 UE 关卡内生成所有的迷宫组件（Blueprint 和 Static Mesh），一步到位实现迷宫数据在引擎中的可视化重建。
+**使用方法**: 
+在 UE 内部执行 `json-rail-importer/import_json_rails_to_level.py`。生成的 Actor 将被自动放置到 `GeneratedMazeRails` 文件夹下以保持关卡整洁。
+**最近更新**: 
+增强了资产引用的健壮性，当特定蓝图 (`BP_Rail`) 未找到时，能够智能回退并直接实例化对应的 StaticMesh。增加了关卡清理和生成 Actor 的自动化文件夹归档功能。
 
-### 安装
+### 4. Asset Pivot Editor (资产原点编辑器)
+**功能与开发简介**: 
+UE 批量资产处理提效工具。修改模型资源的原点（Pivot）通常需要重新导出至 DCC 软件（如 Blender/Maya），此脚本能直接在 UE 内通过修改 MeshDescription 的顶点坐标，实现 Static Mesh 原点的重新对齐（如置底、居中）。
+**使用方法**: 
+在 UE 场景中选中需要修改的 Actor，运行 `asset-pivot-editor/pivot_set_buttom.py`。通过修改代码顶部的 `TARGET_PIVOT_POSITION` 可以设置新的原点（如 `0` 为底部，`1` 为中心）。
+**最近更新**: 
+引入了位置补偿机制（`COMPENSATE_SELECTED_ACTORS = True`）。在烘焙修改底层 Static Mesh 资产 Pivot 的同时，自动反向补偿选中 Actor 在场景中的坐标，确保其在关卡内的视觉位置不发生改变。
 
-1.  克隆仓库或下载源码。
-2.  安装必要的 Python 依赖：
+### 5. Texture Assigner (材质自动分配器)
+**功能与开发简介**: 
+UE 美术管线自动化工具。当美术批量导入资源后，手动寻找并绑定材质非常繁琐。该工具可根据严格的命名规范（`SM_`、`MI_`、`T_`），自动在目录中寻址关联的材质实例（MI）和贴图（Texture），把贴图赋给MI相应的参数，并最终将MI绑定到静态网格体上。
+**使用方法**: 
+在 UE 内部执行 `texture-assigner/texture_assigner.py`。可以优先通过选中 Content Browser 的目标文件夹触发，若未选中则回退读取脚本内的默认根路径。
+**最近更新**: 
+增加了健壮的类型和异常处理，能识别并跳过类型不匹配的资产；操作完成后在日志中详细列出所有已变脏（Dirty）需要手动保存的资产路径，避免数据丢失。
 
-```bash
-pip install pandas numpy matplotlib scipy
-```
+### 6. Hermite Spline Generator (Hermite 曲线生成器)
+**功能与开发简介**: 
+为了在迷宫复杂轨道中生成平滑的运动曲线，此工具基于 Hermite 样条原理对空间向量进行采样与拟合，以一套基于 Web 的曲线编辑器来提供直观的参数调试。
+**使用方法**: 
+- **前端工具**: 运行 `cd hermite-spline-generator && npm install && npm run dev` 即可在本地开启 Web 版本的曲线可视化编辑器。
+**最近更新**: 
+移除了旧版的纯 Python 后台拟合脚本，完全过渡到了图形化交互。支持直接在浏览器里实时交互与调试样条曲线的控制点与切线，极大地提升了曲线调参的直观性。
 
-如果需要运行新版 Web 工具：
+---
 
-```bash
-cd maze-builder
-npm install
-```
+## 💻 环境需求
 
-### 使用方法
-
-#### 1. 生成迷宫
-
-在项目根目录下运行脚本：
-
-```bash
-python maze-builder/maze_generator.py
-```
-
-*   **配置加载**: 脚本会优先读取 `maze-builder/rail_config.csv`。
-*   **输出**: 成功执行后，会在 `maze-builder/` 目录下生成 `maze_layout.json` 和 `maze_generation_report.md`。
-*   **日志**: 控制台会打印生成过程。
-
-#### 2. 可视化检阅
-
-1.  使用浏览器（推荐 Chrome 或 Edge）打开 `maze-builder/maze_viewer.html`。
-2.  找到生成的 JSON 文件（在 `maze-builder/maze_layout.json`）。
-3.  **拖拽** JSON 文件到页面中央的虚线框内。
-
-也可以运行 TypeScript/Vite 版 Web 工具：
-
-```bash
-cd maze-builder
-npm run dev
-```
-
-#### 3. 运行测试
-
-检查生成的迷宫是否符合规范：
-
-```bash
-python maze-builder/test_maze.py
-```
-
-**操作方式**:
-*   **左键拖拽**: 旋转视角
-*   **右键拖拽**: 平移视角
-*   **滚轮**: 缩放
-*   **颜色含义**: 
-    *   🟩 **绿色**: 低难度区域
-    *   🟥 **红色**: 高难度区域
-    *   🔴 **红色小球**: 未连接的开放出口（Dead Ends 或待扩展接口）
-
-## ⚙️ 配置说明 (Configuration)
-
-生成器依赖 `rail_config.csv` 来定义可用的轨道零件。该文件通常由 UE5 编辑器导出，包含以下关键信息：
-
-*   **RowName**: 轨道的唯一标识符（通常包含尺寸信息，如 `_X1_Y1_Z1`）。
-*   **Diff_Base / Difficulty**: 该轨道的基础难度系数。
-*   **SizeX/Y/Z**: 轨道的逻辑占用尺寸（Grid Unit）。
-*   **Exit_Array / Exits**: 轨道出口的位置和旋转信息。
-*   **Type**: 轨道类型（Start, End, Normal）。
-
-## 🧠 算法原理 (Algorithm)
-
-本项目采用 **难度驱动的生长算法 (Difficulty-Driven Growth)**。
-
-1.  **初始化**: 随机放置一个 Start 轨道，将其出口加入 `OpenList`。
-2.  **生长循环**:
-    *   从 `OpenList` 中取出一个可用接口。
-    *   根据当前累计难度决定生成策略（正常生长 vs 寻找终点）。
-    *   随机选择一个适配的轨道零件。
-    *   进行 **碰撞检测** (AABB) 和 **边界检查**。
-    *   如果放置成功，计算新难度并将其新出口加入 `OpenList`。
-3.  **终结**: 当累计难度达到设定阈值 (`TARGET_DIFFICULTY`) 时，强制尝试放置 End 轨道。
-
-## 🏗️ 代码结构与逻辑 (Code Structure & Logic)
-
-核心脚本 `maze_generator.py` 采用严格的分层注释结构，逻辑流如下：
-
-*   **1. 基础配置与常量**
-    *   1.1 全局常量 (Scale, Bounds)
-    *   1.2 边界模式枚举
-*   **2. 核心数据结构**
-    *   2.1 向量类 (`Vector3`)
-    *   2.2 轨道配置项 (`RailConfigItem`)
-    *   2.3 开放连接点 (`OpenConnector`)
-    *   2.4 轨道实例 (`RailInstance`)
-*   **3. 辅助计算逻辑**
-    *   3.1 占用格子计算 (`calculate_occupied_cells`)
-        *   3.1.1 确定局部遍历范围
-        *   3.1.2 解析 Y 轴范围
-        *   3.1.3 解析 Z 轴范围
-        *   3.1.4 遍历并生成世界坐标
-*   **4. 配置加载模块**
-    *   4.1 加载配置 (`load_config`)
-*   **5. 迷宫生成器核心 (`MazeGenerator`)**
-    *   5.1 初始化
-    *   5.2 状态检查与工具 (边界、碰撞、方向转换)
-    *   5.3 核心放置逻辑 (`place_rail_v2`)
-    *   5.4 生成流程 (`generate`)
-    *   5.5 导出逻辑 (`export_json`)
-*   **6. 程序入口**
-    *   6.1 主执行块
-
-可视化工具 `maze_viewer.html` 同样遵循分层结构：
-
-*   **1. 基础配置与依赖**
-    *   1.1 全局常量 (Grid Scale, Bounds)
-*   **2. 场景初始化**
-    *   2.1 调试辅助网格 (Debug Grid)
-    *   2.2 坐标轴辅助
-    *   2.3 相机与渲染器
-    *   2.4 灯光系统
-*   **3. 拖拽与文件解析**
-    *   3.1 拖拽事件绑定
-    *   3.2 JSON 解析
-*   **4. 资源管理**
-    *   4.1 共享几何体与材质 (InstancedMesh 优化)
-    *   4.2 资源清理函数
-    *   4.3 全局状态映射
-*   **5. 场景构建核心 (`buildScene`)**
-    *   5.1 清理旧场景
-    *   5.2 更新 UI 统计信息
-    *   5.3 绘制迷宫边界框
-    *   5.4 实例化网格准备
-    *   5.5 创建实例化网格
-    *   5.6 填充实例数据 (Blocks, Arrows, Text)
-*   **6. 交互与射线检测**
-    *   6.1 射线初始化
-    *   6.2 鼠标移动处理 (Hover 高亮)
-*   **7. 渲染循环**
-
-## 📄 输出格式 (Output Format)
-
-生成的 JSON 文件包含以下核心字段：
-
-*   **MapMeta**: 地图元数据（种子、难度、边界等）。
-*   **Rail**: 放置的轨道列表。
-    *   `Index`: 全局唯一索引。
-    *   `Name`: 对应 CSV 中的 RowName。
-    *   `Pos_Abs`: 物理世界坐标 (cm)。
-    *   `Pos_Rev`: 逻辑网格坐标 (grid)。
-    *   `Rot_Index`: 旋转索引 (0-3, 对应 0°-270°)。
-    *   `Prev_Index` / `Next_Index`: 链表结构的连接关系。
-
-## 🤝 贡献 (Contributing)
-
-欢迎提交 Issue 或 Pull Request 来改进算法效率或增加新功能。
-
-## 📜 许可证 (License)
-
-[MIT License](LICENSE)
+- **Python**: 3.8+ (迷宫生成等独立数据计算工具需要)
+  - 依赖模块：`pandas`, `numpy`, `matplotlib`, `scipy`
+- **Node.js / npm**: 用于运行部分工具自带的 Web 可视化界面 (如 maze-builder前端 和 Hermite曲线编辑器)
+- **Unreal Engine 5**: 需要在项目中开启 `Python Editor Script Plugin` 和 `Editor Scripting Utilities` 插件，才能正常运行涉及 UE 的自动化脚本。

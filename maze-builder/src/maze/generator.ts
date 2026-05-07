@@ -30,6 +30,39 @@ function boundRadius(size: number): number {
   return Math.max(0, Math.floor((size - 1) / 2));
 }
 
+function rotIndexFromDegrees(degrees: number): number {
+  return Math.trunc(degrees / 90) % 4;
+}
+
+function transformByRotAbs(vec: Vector3, rotAbs: RotAbs): Vector3 {
+  return vec
+    .rotateX(rotIndexFromDegrees(rotAbs.r))
+    .rotateY(rotIndexFromDegrees(rotAbs.p))
+    .rotateZ(rotIndexFromDegrees(rotAbs.y));
+}
+
+function forwardDirFromRotAbs(rotAbs: RotAbs): DirAbs {
+  const pitch = mod360(rotAbs.p);
+  if (Math.abs(pitch - 90) < 1) return "+Z";
+  if (Math.abs(pitch - 270) < 1) return "-Z";
+  return ["+X", "+Y", "-X", "-Y"][((rotIndexFromDegrees(rotAbs.y) % 4) + 4) % 4] as DirAbs;
+}
+
+const RIGHT_HANDED_L90_MODEL_OVERRIDES = new Set([
+  "BP_Curve_L90_X4_Y4_Z1_Rail",
+  "BP_Curve_L90_Borderless_O_X2_Y2_Z1_Rail",
+]);
+
+const LEFT_HANDED_R90_MODEL_OVERRIDES = new Set([
+  "BP_Curve_R90_X3_Y3_Z1_Rail",
+]);
+
+function horizontalModelSideOverride(railId: string): "left" | "right" | null {
+  if (RIGHT_HANDED_L90_MODEL_OVERRIDES.has(railId)) return "right";
+  if (LEFT_HANDED_R90_MODEL_OVERRIDES.has(railId)) return "left";
+  return null;
+}
+
 export function calculateOccupiedCells(
   railId: string,
   pos: Vector3,
@@ -37,13 +70,34 @@ export function calculateOccupiedCells(
   rotIdx: number,
   rollIdx = 0,
 ): [number, number, number][] {
+  return calculateOccupiedCellsWithRotAbs(railId, pos, size, { p: 0, y: rotIdx * 90, r: rollIdx * 90 });
+}
+
+export function calculateOccupiedCellsWithRotAbs(
+  railId: string,
+  pos: Vector3,
+  size: Vector3,
+  rotAbs: RotAbs,
+): [number, number, number][] {
+  return calculateLocalOccupiedCells(railId, size).map((cell) => {
+    const rotated = transformByRotAbs(cell, rotAbs);
+    return [pos.x + rotated.x, pos.y + rotated.y, pos.z + rotated.z];
+  });
+}
+
+export function calculateLocalOccupiedCells(railId: string, size: Vector3): Vector3[] {
   let yMin = 0;
   let yMax = 0;
   let zMin = 0;
   let zMax = 0;
   const rid = railId.toUpperCase();
+  const horizontalOverride = horizontalModelSideOverride(railId);
 
-  if (rid.includes("_L90_") || rid.includes("_FL90_")) {
+  if (horizontalOverride === "right") {
+    yMax = size.y - 1;
+  } else if (horizontalOverride === "left") {
+    yMin = -(size.y - 1);
+  } else if (rid.includes("_L90_") || rid.includes("_FL90_")) {
     yMin = -(size.y - 1);
   } else if (rid.includes("_R90_") || rid.includes("_FR90_")) {
     yMax = size.y - 1;
@@ -58,12 +112,11 @@ export function calculateOccupiedCells(
     zMin = -(size.z - 1);
   }
 
-  const cells: [number, number, number][] = [];
+  const cells: Vector3[] = [];
   for (let lx = 0; lx < size.x; lx += 1) {
     for (let ly = yMin; ly <= yMax; ly += 1) {
       for (let lz = zMin; lz <= zMax; lz += 1) {
-        const rotated = new Vector3(lx, ly, lz).rotateX(rollIdx).rotateZ(rotIdx);
-        cells.push([pos.x + rotated.x, pos.y + rotated.y, pos.z + rotated.z]);
+        cells.push(new Vector3(lx, ly, lz));
       }
     }
   }
@@ -79,9 +132,11 @@ export class MazeGenerator {
   openList: OpenConnector[] = [];
   currentTotalDifficulty = 0;
   backtrackCount = 0;
+  usedSpinCount = 0;
   private globalIndexCounter = 0;
   private placedCheckpointsCount = 0;
   private segmentDiffAcc = 0;
+  private segmentDiffs: number[] = [];
   private random: SeededRandom;
   private globalBounds?: [number, number, number, number, number, number];
 
@@ -111,12 +166,25 @@ export class MazeGenerator {
     if (typeof startResult === "string") throw new Error(`Start Rail Placement Failed: ${startResult}`);
     this.log("success", `Start: ${start.rowName} at ${startPos.asTuple().join(",")}`);
 
-    const segmentTargetDiff = this.options.targetDifficulty / (this.options.targetCheckpoints + 1);
+    const checkpointTarget = Math.max(0, Math.floor(this.options.targetCheckpoints));
+    const segmentTargetDiff = checkpointTarget > 0 ? this.options.targetDifficulty / checkpointTarget : Infinity;
+    let forceCheckpoint = false;
+    if (checkpointTarget > 0) this.log("info", `Checkpoint target: ${checkpointTarget}, segment diff threshold: ${segmentTargetDiff.toFixed(2)}`);
 
     while (true) {
-      const mustEnd = this.currentTotalDifficulty >= this.options.targetDifficulty;
+      const allCheckpointsPlaced = this.placedCheckpointsCount >= checkpointTarget;
+      const mustEnd = this.currentTotalDifficulty >= this.options.targetDifficulty && allCheckpointsPlaced;
       const triggerCheckpoint =
-        this.placedCheckpointsCount < this.options.targetCheckpoints && this.segmentDiffAcc >= segmentTargetDiff;
+        !mustEnd &&
+        (forceCheckpoint ||
+          (this.placedCheckpointsCount < checkpointTarget && this.segmentDiffAcc > segmentTargetDiff));
+
+      if (triggerCheckpoint && !forceCheckpoint) {
+        if (!this.backtrackLastRail()) break;
+        forceCheckpoint = true;
+        this.log("info", `Checkpoint threshold reached. Backtracked 1 rail before placing checkpoint fork.`);
+        continue;
+      }
 
       if (this.openList.length === 0) {
         if (!this.backtrackLastRail()) break;
@@ -127,9 +195,7 @@ export class MazeGenerator {
       let candidates = this.getCandidates(mustEnd, triggerCheckpoint).filter(
         (candidate) => !connector.forbiddenCandidates.has(candidate),
       );
-      const spinOptions = connector.spinDiffs
-        .map((ratio, spinRot) => ({ spinRot, ratio }))
-        .filter((item) => item.ratio > 0);
+      const spinOptions = this.availableSpinOptions(connector.spinDiffs);
 
       let success = false;
       let attempts = 0;
@@ -166,6 +232,26 @@ export class MazeGenerator {
             result.forbiddenSiblings = new Set(connector.forbiddenCandidates);
             placed = result;
             placedId = candidate;
+            if (triggerCheckpoint) {
+              const checkpoint = this.placeCheckpointOnFork(result, connector.accumulatedDiff + result.diffAct);
+              if (checkpoint) {
+                this.placedCheckpointsCount += 1;
+                this.segmentDiffAcc += result.diffAct + checkpoint.diffAct;
+                this.segmentDiffs.push(Number(this.segmentDiffAcc.toFixed(8)));
+                this.segmentDiffAcc = 0;
+                forceCheckpoint = false;
+                success = true;
+                this.log("success", `Checkpoint ${this.placedCheckpointsCount}/${checkpointTarget}: ${checkpoint.railId} after fork ${result.railId}`);
+                break;
+              }
+
+              this.rollbackPlacedRail(result);
+              placed = null;
+              placedId = "";
+              failReasons.set("CheckpointPlacementFailed", (failReasons.get("CheckpointPlacementFailed") ?? 0) + 1);
+              continue;
+            }
+
             success = true;
             this.segmentDiffAcc += result.diffAct;
             break;
@@ -194,13 +280,16 @@ export class MazeGenerator {
   }
 
   exportLayout(): MazeLayout {
+    const segmentDiffs = [...this.segmentDiffs];
+    if (this.segmentDiffAcc > 0 || segmentDiffs.length === 0) {
+      segmentDiffs.push(Number(this.segmentDiffAcc.toFixed(8)));
+    }
     const rails = this.placedRails.map((rail) => {
       const cfg = this.requireConfig(rail.railId);
       const exits = rail.exitStatus.map((status, i) => {
         const logicOffset = cfg.exitsLogic[i].Pos;
-        const exitLocalRotIdx = cfg.exitsLogic[i].RotOffset;
-        const exitAbsRotIdx = (rail.rotIndex + exitLocalRotIdx) % 4;
-        const worldLogicPos = rail.posRev.add(logicOffset.rotateZ(rail.rotIndex));
+        const worldLogicOffset = transformByRotAbs(logicOffset, rail.rotAbs);
+        const worldLogicPos = rail.posRev.add(worldLogicOffset);
         const localRot = cfg.exitsLogic[i].LocalRot;
         const exitRotAbs = {
           p: mod360(rail.rotAbs.p + localRot.p),
@@ -208,10 +297,7 @@ export class MazeGenerator {
           r: mod360(rail.rotAbs.r + localRot.r),
         };
 
-        let exitDirAbs: DirAbs;
-        if (Math.abs(localRot.p - 90) < 1) exitDirAbs = "+Z";
-        else if (Math.abs(localRot.p + 90) < 1 || Math.abs(localRot.p - 270) < 1) exitDirAbs = "-Z";
-        else exitDirAbs = this.getUeDirStr(exitAbsRotIdx);
+        const exitDirAbs = forwardDirFromRotAbs(exitRotAbs);
 
         return {
           Index: i,
@@ -246,9 +332,66 @@ export class MazeGenerator {
         LevelName: "TypeScript_Generated_Web",
         RailCount: rails.length,
         MazeDiff: rails.reduce((sum, rail) => sum + rail.Diff_Act, 0),
+        CheckpointCount: rails.filter((rail) => rail.Rail_ID.toLowerCase().includes("checkpoint")).length,
+        SegmentDiffs: segmentDiffs,
+        SpinCount: this.usedSpinCount,
+        MaxSpins: this.maxSpins(),
       },
       Rail: rails,
     };
+  }
+
+  private placeCheckpointOnFork(fork: RailInstance, accumulatedDiff: number): RailInstance | null {
+    const checkpointCandidates = [...this.configMap.values()].filter((item) => item.isCheckpoint);
+    if (checkpointCandidates.length === 0) return null;
+
+    const forkConfig = this.requireConfig(fork.railId);
+    const openExits = fork.exitStatus.filter((status) => !status.IsConnected);
+    if (openExits.length < 2) return null;
+
+    for (const status of openExits) {
+      const exit = forkConfig.exitsLogic[status.Index];
+      const connector: OpenConnector = {
+        targetPos: fork.posRev.add(transformByRotAbs(exit.Pos, fork.rotAbs)),
+        parentId: fork.railIndex,
+        parentExitIdx: status.Index,
+        accumulatedDiff,
+        parentRotIndex: fork.rotIndex,
+        parentRotAbs: cloneRot(fork.rotAbs),
+        spinDiffs: exit.SpinDiff,
+        parentExitRotOffset: exit.RotOffset,
+        parentExitLocalRot: cloneRot(exit.LocalRot),
+        forbiddenCandidates: new Set(),
+      };
+      const spinOptions = this.availableSpinOptions(connector.spinDiffs);
+
+      for (const candidate of checkpointCandidates) {
+        for (const { spinRot, ratio } of spinOptions) {
+          const [targetRot, targetRotAbs, targetRoll] = this.calculateRailTransform(connector, spinRot);
+          const result = this.placeRailV2(
+            candidate.rowName,
+            connector.targetPos,
+            targetRot,
+            targetRotAbs,
+            accumulatedDiff,
+            ratio,
+            fork.railIndex,
+            targetRoll,
+          );
+
+          if (typeof result !== "string") {
+            fork.nextIndices.push(result.railIndex);
+            fork.exitStatus[status.Index].IsConnected = true;
+            fork.exitStatus[status.Index].TargetID = result.railIndex;
+            this.removeOpenConnector(fork.railIndex, status.Index);
+            this.removeOpenConnectorsForParent(result.railIndex);
+            return result;
+          }
+        }
+      }
+    }
+
+    return null;
   }
 
   private placeRailV2(
@@ -262,7 +405,7 @@ export class MazeGenerator {
     roll = 0,
   ): RailInstance | string {
     const cfg = this.requireConfig(railId);
-    const expectedCells = calculateOccupiedCells(railId, pos, cfg.sizeRev, rot, roll);
+    const expectedCells = calculateOccupiedCellsWithRotAbs(railId, pos, cfg.sizeRev, rotAbs);
     const collision = this.findCollision(expectedCells);
     if (collision !== null) return `Collision with Rail ${collision}`;
     if (!this.isInBounds(expectedCells)) return "OutOfBounds";
@@ -278,6 +421,7 @@ export class MazeGenerator {
       rotAbs: cloneRot(rotAbs),
       sizeRev: cfg.sizeRev.clone(),
       diffAct,
+      spinRot: roll,
       prevIndex: prevIdx,
       nextIndices: [],
       exitStatus: cfg.exitsLogic.map((_, i) => ({ Index: i, IsConnected: false, TargetID: -1, WorldPos: null })),
@@ -288,9 +432,10 @@ export class MazeGenerator {
     this.markOccupied(expectedCells, idx);
     this.placedRails.push(instance);
     this.currentTotalDifficulty += diffAct;
+    if (roll !== 0) this.usedSpinCount += 1;
 
     cfg.exitsLogic.forEach((exit, i) => {
-      const worldExitPos = pos.add(exit.Pos.rotateX(roll).rotateZ(rot));
+      const worldExitPos = pos.add(transformByRotAbs(exit.Pos, rotAbs));
       this.openList.push({
         targetPos: worldExitPos,
         parentId: idx,
@@ -316,6 +461,9 @@ export class MazeGenerator {
 
     this.globalIndexCounter -= 1;
     this.currentTotalDifficulty -= lastRail.diffAct;
+    if (lastRail.spinRot !== 0) this.usedSpinCount = Math.max(0, this.usedSpinCount - 1);
+    this.segmentDiffAcc = Math.max(0, this.segmentDiffAcc - lastRail.diffAct);
+    this.removeOpenConnectorsForParent(lastRail.railIndex);
     for (const cell of lastRail.occupiedCellsRev) {
       const key = keyOf(cell.asTuple());
       if (this.occupiedCells.get(key) === lastRail.railIndex) this.occupiedCells.delete(key);
@@ -335,7 +483,7 @@ export class MazeGenerator {
     const forbiddenCandidates = new Set(lastRail.forbiddenSiblings);
     forbiddenCandidates.add(lastRail.railId);
     this.openList.push({
-      targetPos: parent.posRev.add(exitData.Pos.rotateZ(parent.rotIndex)),
+      targetPos: parent.posRev.add(transformByRotAbs(exitData.Pos, parent.rotAbs)),
       parentId: parent.railIndex,
       parentExitIdx: exitIdx,
       accumulatedDiff: this.currentTotalDifficulty,
@@ -348,6 +496,50 @@ export class MazeGenerator {
     });
 
     return true;
+  }
+
+  private rollbackPlacedRail(rail: RailInstance): void {
+    const railIndex = this.placedRails.findIndex((item) => item.railIndex === rail.railIndex);
+    if (railIndex !== -1) this.placedRails.splice(railIndex, 1);
+    if (rail.railIndex === this.globalIndexCounter - 1) this.globalIndexCounter -= 1;
+    this.currentTotalDifficulty -= rail.diffAct;
+    if (rail.spinRot !== 0) this.usedSpinCount = Math.max(0, this.usedSpinCount - 1);
+    this.removeOpenConnectorsForParent(rail.railIndex);
+
+    for (const cell of rail.occupiedCellsRev) {
+      const key = keyOf(cell.asTuple());
+      if (this.occupiedCells.get(key) === rail.railIndex) this.occupiedCells.delete(key);
+    }
+
+    if (rail.prevIndex === -1) return;
+    const parent = this.placedRails.find((item) => item.railIndex === rail.prevIndex);
+    if (!parent) return;
+    const exit = parent.exitStatus.find((status) => status.TargetID === rail.railIndex);
+    if (!exit) return;
+    exit.IsConnected = false;
+    exit.TargetID = -1;
+    parent.nextIndices = parent.nextIndices.filter((index) => index !== rail.railIndex);
+  }
+
+  private removeOpenConnectorsForParent(parentId: number): void {
+    this.openList = this.openList.filter((connector) => connector.parentId !== parentId);
+  }
+
+  private removeOpenConnector(parentId: number, parentExitIdx: number): void {
+    this.openList = this.openList.filter(
+      (connector) => connector.parentId !== parentId || connector.parentExitIdx !== parentExitIdx,
+    );
+  }
+
+  private availableSpinOptions(spinDiffs: number[]): { spinRot: number; ratio: number }[] {
+    const canUseSpin = this.usedSpinCount < this.maxSpins();
+    return spinDiffs
+      .map((ratio, spinRot) => ({ spinRot, ratio }))
+      .filter((item) => item.ratio > 0 && (item.spinRot === 0 || canUseSpin));
+  }
+
+  private maxSpins(): number {
+    return Math.max(0, Math.floor(this.options.maxSpins));
   }
 
   private getCandidates(mustEnd: boolean, triggerCheckpoint: boolean): string[] {

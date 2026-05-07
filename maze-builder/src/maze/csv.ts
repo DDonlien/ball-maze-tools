@@ -103,6 +103,28 @@ function parseExitArray(exitStr: string) {
   return exits;
 }
 
+const RIGHT_HANDED_L90_EXIT_OVERRIDES = new Set([
+  "BP_Curve_L90_X4_Y4_Z1_Rail",
+  "BP_Curve_L90_Borderless_O_X2_Y2_Z1_Rail",
+]);
+
+function normalizeRailConfigItem(item: RailConfigItem): RailConfigItem {
+  if (!RIGHT_HANDED_L90_EXIT_OVERRIDES.has(item.rowName)) return item;
+
+  return {
+    ...item,
+    exitsLogic: item.exitsLogic.map((exit) => ({
+      ...exit,
+      Pos: new Vector3(exit.Pos.x, Math.abs(exit.Pos.y), exit.Pos.z),
+      RotOffset: 1,
+      LocalRot: {
+        ...exit.LocalRot,
+        y: Math.abs(exit.LocalRot.y),
+      },
+    })),
+  };
+}
+
 export function loadConfigFromCsv(csvText: string): Map<string, RailConfigItem> {
   const rows = parseCsvRows(csvText);
   if (rows.length < 2) throw new Error("CSV does not contain any rail rows.");
@@ -141,7 +163,7 @@ export function loadConfigFromCsv(csvText: string): Map<string, RailConfigItem> 
     }
 
     const railType = row.Type?.trim().toLowerCase() || rowName.toLowerCase();
-    config.set(rowName, {
+    config.set(rowName, normalizeRailConfigItem({
       rowName,
       diffBase,
       sizeRev,
@@ -149,7 +171,7 @@ export function loadConfigFromCsv(csvText: string): Map<string, RailConfigItem> 
       isEnd: railType.includes("end"),
       isStart: railType.includes("start"),
       isCheckpoint: railType.includes("checkpoint"),
-    });
+    }));
   }
 
   return config;

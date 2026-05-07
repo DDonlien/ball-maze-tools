@@ -143,7 +143,9 @@ h2 {
   flex-direction: column;
   gap: 0;
   flex: 1;
-  overflow: hidden;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .section {
@@ -159,8 +161,29 @@ h2 {
 .actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
+}
+
+.section-head {
+  justify-content: flex-start;
+  min-height: 34px;
+}
+
+.section-action {
+  margin-left: auto;
+}
+
+.collapsible-content {
+  display: grid;
+  gap: 10px;
+}
+
+.collapsible-section.is-collapsed {
+  gap: 0;
+}
+
+.collapsible-section.is-collapsed .collapsible-content {
+  display: none;
 }
 
 .actions {
@@ -188,6 +211,63 @@ h2 {
   color: #68706c;
   text-transform: uppercase;
   letter-spacing: 1.2px;
+}
+
+.help-label {
+  position: relative;
+  width: fit-content;
+  cursor: help;
+  border-bottom: 1px dotted #9da39f;
+}
+
+.help-label::after {
+  content: attr(data-help);
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  z-index: 20;
+  width: min(260px, calc(100vw - 40px));
+  padding: 8px 10px;
+  color: #2c3230;
+  background: #fff;
+  border: 1px solid #2c3230;
+  box-shadow: 3px 3px 0 rgba(44, 50, 48, 0.16);
+  font-size: 11px;
+  line-height: 1.45;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.help-label::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  bottom: calc(100% + 3px);
+  z-index: 21;
+  width: 8px;
+  height: 8px;
+  background: #fff;
+  border-right: 1px solid #2c3230;
+  border-bottom: 1px solid #2c3230;
+  pointer-events: none;
+  opacity: 0;
+  transform: rotate(45deg) translateY(4px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.help-label:hover::after,
+.help-label:hover::before {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.help-label:hover::before {
+  transform: rotate(45deg) translateY(0);
 }
 
 input {
@@ -230,6 +310,43 @@ button {
 button:hover {
   border-color: #2c3230;
   background: #fff;
+}
+
+.collapse-toggle {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.collapse-toggle::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid #2c3230;
+  transform: translateY(1px);
+}
+
+.collapse-toggle:hover {
+  border-color: #d9d9d3;
+  background: #fff;
+}
+
+.collapsible-section.is-collapsed .collapse-toggle::before,
+.log-dock.is-collapsed .log-toggle::before {
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 6px solid #2c3230;
+  border-right: 0;
+  transform: translateX(1px);
 }
 
 .primary {
@@ -300,10 +417,8 @@ button:hover {
 }
 
 .details {
-  flex: 1;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  flex-shrink: 0;
 }
 
 .detail-row {
@@ -457,9 +572,10 @@ button:hover {
 .log-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 9px 12px;
+  justify-content: flex-start;
+  gap: 8px;
+  min-height: 38px;
+  padding: 6px 10px;
   color: #2c3230;
   font-size: 10px;
   font-weight: 900;
@@ -469,18 +585,10 @@ button:hover {
 }
 
 .log-toggle {
-  min-width: 44px;
+  min-width: 24px;
+  width: 24px;
   height: 24px;
-  padding: 0 8px;
-  border: 1px solid #2c3230;
-  background: #2c3230;
-  color: #fff;
-  font-size: 9px;
-}
-
-.log-toggle:hover {
-  background: #fff;
-  color: #2c3230;
+  min-height: 24px;
 }
 
 .log-content {

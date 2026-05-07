@@ -11,8 +11,89 @@ import "./styles/main.css";
 const app = document.querySelector<HTMLDivElement>("#app");
 if (!app) throw new Error("Missing #app");
 
-function createRandomSeed(): string {
-  return String(Math.floor(Math.random() * 90000000) + 10000000);
+const SEED_VERSION = "bm01";
+const RANDOM_SEED_MAX = 36 ** 6;
+
+function createRandomSeed(): number {
+  return Math.floor(Math.random() * RANDOM_SEED_MAX);
+}
+
+interface GeneratorSeedState {
+  random: number;
+  targetDifficulty: number;
+  targetCheckpoints: number;
+  maxSpins: number;
+  bounds: Vec3Dict;
+}
+
+function randomOdd(min: number, max: number): number {
+  const values = [];
+  for (let value = min; value <= max; value += 1) {
+    if (value % 2 === 1) values.push(value);
+  }
+  return values[Math.floor(Math.random() * values.length)] ?? min;
+}
+
+function createRandomSeedState(): GeneratorSeedState {
+  return {
+    random: createRandomSeed(),
+    targetDifficulty: Math.floor(Math.random() * 23) + 8,
+    targetCheckpoints: Math.floor(Math.random() * 4),
+    maxSpins: Math.floor(Math.random() * 5),
+    bounds: {
+      x: randomOdd(7, 15),
+      y: randomOdd(7, 15),
+      z: randomOdd(1, 7),
+    },
+  };
+}
+
+function encodeSeedState(state: GeneratorSeedState): string {
+  const encode = (value: number, width: number) => Math.max(0, Math.floor(value)).toString(36).padStart(width, "0").slice(-width);
+  return [
+    SEED_VERSION,
+    encode(state.random, 6),
+    encode(Math.max(1, state.targetDifficulty), 2),
+    encode(state.targetCheckpoints, 2),
+    encode(state.maxSpins, 2),
+    [normalizeBoundSize(state.bounds.x), normalizeBoundSize(state.bounds.y), normalizeBoundSize(state.bounds.z)]
+      .map((value) => encode(value, 2))
+      .join(""),
+  ].join("-");
+}
+
+function parseSeedState(seed: string): GeneratorSeedState | null {
+  const raw = seed.trim();
+  const parts = raw.split("-");
+  if (parts.length !== 6) return null;
+
+  const read = (value: string) => Number.parseInt(value, 36);
+  const isModern = parts[0] === SEED_VERSION;
+  const isLegacy = parts[0] === "BM1";
+  if (!isModern && !isLegacy) return null;
+
+  const bounds = isModern
+    ? [parts[5].slice(0, 2), parts[5].slice(2, 4), parts[5].slice(4, 6)].map(read)
+    : parts[5].split(".").map(read);
+  const random = read(parts[1]);
+  const targetDifficulty = read(parts[2]);
+  const targetCheckpoints = read(parts[3]);
+  const maxSpins = read(parts[4]);
+  if (![random, targetDifficulty, targetCheckpoints, maxSpins, ...bounds].every(Number.isFinite)) return null;
+  if (bounds.length !== 3) return null;
+  if (isModern && !/^[a-z0-9]{4}-[a-z0-9]{6}-[a-z0-9]{2}-[a-z0-9]{2}-[a-z0-9]{2}-[a-z0-9]{6}$/.test(raw)) return null;
+
+  return {
+    random,
+    targetDifficulty: Math.max(1, Math.floor(targetDifficulty)),
+    targetCheckpoints: Math.max(0, Math.floor(targetCheckpoints)),
+    maxSpins: Math.max(0, Math.floor(maxSpins)),
+    bounds: {
+      x: normalizeBoundSize(bounds[0]),
+      y: normalizeBoundSize(bounds[1]),
+      z: normalizeBoundSize(bounds[2]),
+    },
+  };
 }
 
 app.innerHTML = `
@@ -33,46 +114,67 @@ app.innerHTML = `
           <span>CSV regenerates config. JSON opens a layout.</span>
         </section>
 
-        <section class="section">
+        <section class="section collapsible-section" data-panel="generator">
           <div class="section-head">
+            <button class="collapse-toggle" data-collapse-target="generator" title="收起 Generator 面板。" aria-label="Toggle Generator panel" aria-expanded="true"></button>
             <h2>Generator</h2>
-            <button id="generateBtn" class="primary" title="使用当前 CSV、seed、目标难度和边界重新生成迷宫。">Generate</button>
+            <button id="generateBtn" class="primary section-action" title="保持当前配置不变，换一个随机性并重新生成迷宫。">Generate</button>
           </div>
-          <label class="field">
-            <span title="随机种子。相同 CSV、参数和 seed 会生成同一套迷宫，方便复现和调试。">Seed</span>
-            <div class="seed-row">
-              <input id="seedInput" type="number" value="${createRandomSeed()}" />
-              <button id="randomSeedBtn" class="icon-button" title="随机生成一个新的 seed。">↻</button>
+          <div class="collapsible-content">
+            <label class="field">
+              <span class="help-label" data-help="完整生成种子，格式为 bm01-random-difficulty-checkpoints-spins-bounds。输入有效 seed 会自动反写配置并生成迷宫。">Seed</span>
+              <div class="seed-row">
+                <input id="seedInput" type="text" value="${encodeSeedState(createRandomSeedState())}" />
+                <button id="randomSeedBtn" class="icon-button" title="随机生成一套新的 seed 和配置。">↻</button>
+              </div>
+            </label>
+            <label class="field">
+              <span class="help-label" data-help="目标总难度。生成器达到该难度后会尝试收尾并放置终点。">Target difficulty</span>
+              <input id="difficultyInput" type="number" min="1" step="1" value="${DEFAULT_GENERATOR_OPTIONS.targetDifficulty}" />
+            </label>
+            <label class="field">
+              <span class="help-label" data-help="Checkpoint 数量。为 0 时不放置 checkpoint；大于 0 时每段超过目标难度 / checkpoint 数量后触发一次分叉 checkpoint。">Checkpoints</span>
+              <input id="checkpointInput" type="number" min="0" step="1" value="${DEFAULT_GENERATOR_OPTIONS.targetCheckpoints}" />
+            </label>
+            <label class="field">
+              <span class="help-label" data-help="允许出现非 0 自旋的最大次数。0 表示下一节轨道默认不绕出口方向自旋。">Max spins</span>
+              <input id="maxSpinsInput" type="number" min="0" step="1" value="${DEFAULT_GENERATOR_OPTIONS.maxSpins}" />
+            </label>
+            <label class="field">
+              <span class="help-label" data-help="生成边界的实际双边尺寸，单位是逻辑 grid。只使用 1、3、5、7 这样的奇数；1 等于旧逻辑里的 0，3 等于旧逻辑里的 1。">Bounds X/Y/Z</span>
+              <div class="triple">
+                <input id="boundX" type="number" min="1" step="2" value="${DEFAULT_GENERATOR_OPTIONS.bounds.x}" />
+                <input id="boundY" type="number" min="1" step="2" value="${DEFAULT_GENERATOR_OPTIONS.bounds.y}" />
+                <input id="boundZ" type="number" min="1" step="2" value="${DEFAULT_GENERATOR_OPTIONS.bounds.z}" />
+              </div>
+            </label>
+            <div class="actions">
+              <button id="moveCenterBtn" title="按 grid 整数偏移当前迷宫，使布局尽量落在当前 bounds 的中心。">Move to center</button>
+              <button id="fitBoundsBtn" title="把 bounds 收缩到能容纳当前迷宫的最小 grid 尺寸，并重新居中布局。">Fit size</button>
+              <button id="downloadBtn" title="下载当前迷宫 JSON。">Download JSON</button>
+              <button id="resetCameraBtn" title="重置相机视角。">Reset View</button>
             </div>
-          </label>
-          <label class="field">
-            <span title="目标总难度。生成器达到该难度后会尝试收尾并放置终点。">Target difficulty</span>
-            <input id="difficultyInput" type="number" min="1" step="1" value="${DEFAULT_GENERATOR_OPTIONS.targetDifficulty}" />
-          </label>
-          <label class="field">
-            <span title="生成边界的实际双边尺寸，单位是逻辑 grid。只使用 1、3、5、7 这样的奇数；1 等于旧逻辑里的 0，3 等于旧逻辑里的 1。">Bounds X/Y/Z</span>
-            <div class="triple">
-              <input id="boundX" type="number" min="1" step="2" value="${DEFAULT_GENERATOR_OPTIONS.bounds.x}" />
-              <input id="boundY" type="number" min="1" step="2" value="${DEFAULT_GENERATOR_OPTIONS.bounds.y}" />
-              <input id="boundZ" type="number" min="1" step="2" value="${DEFAULT_GENERATOR_OPTIONS.bounds.z}" />
-            </div>
-          </label>
-          <div class="actions">
-            <button id="moveCenterBtn" title="按 grid 整数偏移当前迷宫，使布局尽量落在当前 bounds 的中心。">Move to center</button>
-            <button id="fitBoundsBtn" title="把 bounds 收缩到能容纳当前迷宫的最小 grid 尺寸，并重新居中布局。">Fit size</button>
-            <button id="downloadBtn" title="下载当前迷宫 JSON。">Download JSON</button>
-            <button id="resetCameraBtn" title="重置相机视角。">Reset View</button>
           </div>
         </section>
 
-        <section class="section stats">
-          <h2>Stats</h2>
-          <div id="statsContent" class="stats-grid"></div>
+        <section class="section stats collapsible-section" data-panel="stats">
+          <div class="section-head">
+            <button class="collapse-toggle" data-collapse-target="stats" title="收起 Stats 面板。" aria-label="Toggle Stats panel" aria-expanded="true"></button>
+            <h2>Stats</h2>
+          </div>
+          <div class="collapsible-content">
+            <div id="statsContent" class="stats-grid"></div>
+          </div>
         </section>
 
-        <section class="section details">
-          <h2>Rail Detail</h2>
-          <div id="detailContent" class="muted">Hover a rail in the scene.</div>
+        <section class="section details collapsible-section" data-panel="details">
+          <div class="section-head">
+            <button class="collapse-toggle" data-collapse-target="details" title="收起 Rail Detail 面板。" aria-label="Toggle Rail Detail panel" aria-expanded="true"></button>
+            <h2>Rail Detail</h2>
+          </div>
+          <div class="collapsible-content">
+            <div id="detailContent" class="muted">Hover a rail in the scene.</div>
+          </div>
         </section>
       </div>
     </aside>
@@ -99,8 +201,8 @@ app.innerHTML = `
       </div>
       <div class="log-dock">
         <div class="log-head">
+          <button id="logToggleBtn" class="collapse-toggle log-toggle" title="收起生成日志内容。" aria-label="Toggle generation log" aria-expanded="true"></button>
           <span>Generation Log</span>
-          <button id="logToggleBtn" class="log-toggle" title="收起生成日志内容。" aria-expanded="true">收起</button>
         </div>
         <div id="logContent" class="log-content"></div>
       </div>
@@ -125,9 +227,12 @@ const historyForwardBtn = document.querySelector<HTMLButtonElement>("#historyFor
 const projectionToggleBtn = document.querySelector<HTMLButtonElement>("#projectionToggleBtn")!;
 const focusToggleBtn = document.querySelector<HTMLButtonElement>("#focusToggleBtn")!;
 const viewAxis = document.querySelector<HTMLDivElement>(".view-axis")!;
+const collapseToggles = document.querySelectorAll<HTMLButtonElement>(".collapse-toggle[data-collapse-target]");
 const dropZone = document.querySelector<HTMLDivElement>("#dropZone")!;
 const seedInput = document.querySelector<HTMLInputElement>("#seedInput")!;
 const difficultyInput = document.querySelector<HTMLInputElement>("#difficultyInput")!;
+const checkpointInput = document.querySelector<HTMLInputElement>("#checkpointInput")!;
+const maxSpinsInput = document.querySelector<HTMLInputElement>("#maxSpinsInput")!;
 const boundX = document.querySelector<HTMLInputElement>("#boundX")!;
 const boundY = document.querySelector<HTMLInputElement>("#boundY")!;
 const boundZ = document.querySelector<HTMLInputElement>("#boundZ")!;
@@ -136,13 +241,15 @@ const viewer = new MazeViewer(viewerHost);
 let csvText = railConfigCsv;
 let currentLayout: MazeLayout = JSON.parse(sampleLayoutRaw) as MazeLayout;
 let focusMode: "maze" | "bounds" = "maze";
+let selectedRail: Parameters<NonNullable<typeof viewer.onHover>>[0] = null;
+let seedInputTimer: number | undefined;
 
 function markLatin(text: string): string {
   const escape = (value: string) => value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]!);
   return escape(text).replace(/[A-Za-z0-9_.:/()+,-]+/g, (match) => `<span class="latin">${match}</span>`);
 }
 
-viewer.onHover = (rail) => {
+function renderRailDetail(rail: Parameters<NonNullable<typeof viewer.onHover>>[0]): void {
   if (!rail) {
     detailContent.innerHTML = `<span class="muted">${markLatin("Hover a rail in the scene.")}</span>`;
     return;
@@ -154,18 +261,52 @@ viewer.onHover = (rail) => {
     <div class="detail-row"><span>${markLatin("Abs")}</span><strong>${markLatin(formatVec(rail.pos))}</strong></div>
     <div class="detail-row"><span>${markLatin("Rot")}</span><strong>${markLatin(`${rail.rot.p}/${rail.rot.y}/${rail.rot.r}`)}</strong></div>
     <div class="detail-row"><span>${markLatin("Diff")}</span><strong>${markLatin(rail.diff.toFixed(2))}</strong></div>
+    <div class="detail-row"><span>${markLatin("Total Diff")}</span><strong>${markLatin(rail.cumulativeDiff.toFixed(2))}</strong></div>
+    <div class="detail-row"><span>${markLatin("Segment Diff")}</span><strong>${markLatin(rail.segmentDiff.toFixed(2))}</strong></div>
   `;
+}
+
+viewer.onHover = (rail) => {
+  if (selectedRail) return;
+  renderRailDetail(rail);
 };
 
-function generateLayout(): void {
+viewer.onSelect = (rail) => {
+  selectedRail = rail;
+  renderRailDetail(selectedRail);
+};
+
+function readGeneratorStateFromControls(random = Number(createRandomSeed())): GeneratorSeedState {
+  normalizeBoundInputs();
+  const bounds = currentBounds();
+  return {
+    random,
+    targetDifficulty: Math.max(1, Math.floor(Number(difficultyInput.value) || DEFAULT_GENERATOR_OPTIONS.targetDifficulty)),
+    targetCheckpoints: Math.max(0, Math.floor(Number(checkpointInput.value) || DEFAULT_GENERATOR_OPTIONS.targetCheckpoints)),
+    maxSpins: Math.max(0, Math.floor(Number(maxSpinsInput.value) || DEFAULT_GENERATOR_OPTIONS.maxSpins)),
+    bounds,
+  };
+}
+
+function applySeedState(state: GeneratorSeedState): void {
+  difficultyInput.value = String(state.targetDifficulty);
+  checkpointInput.value = String(state.targetCheckpoints);
+  maxSpinsInput.value = String(state.maxSpins);
+  boundX.value = String(state.bounds.x);
+  boundY.value = String(state.bounds.y);
+  boundZ.value = String(state.bounds.z);
+}
+
+function generateLayout(state: GeneratorSeedState): void {
   try {
-    normalizeBoundInputs();
-    const bounds = currentBounds();
+    applySeedState(state);
     const config = loadConfigFromCsv(csvText);
     const generator = new MazeGenerator(config, {
-      seed: Number(seedInput.value) || Date.now(),
-      targetDifficulty: Number(difficultyInput.value) || DEFAULT_GENERATOR_OPTIONS.targetDifficulty,
-      bounds: new Vector3(bounds.x, bounds.y, bounds.z),
+      seed: state.random,
+      targetDifficulty: state.targetDifficulty,
+      targetCheckpoints: state.targetCheckpoints,
+      maxSpins: state.maxSpins,
+      bounds: new Vector3(state.bounds.x, state.bounds.y, state.bounds.z),
     });
     currentLayout = generator.generate();
     setLayout(currentLayout);
@@ -175,8 +316,26 @@ function generateLayout(): void {
   }
 }
 
+function generateFromSeedInput(): void {
+  const state = parseSeedState(seedInput.value);
+  if (!state) {
+    logContent.innerHTML = `<div class="log-line fail">${markLatin("Invalid seed. Expected format: bm01-000000-00-00-00-000000")}</div>`;
+    return;
+  }
+  seedInput.value = encodeSeedState(state);
+  generateLayout(state);
+}
+
+function regenerateWithCurrentConfig(): void {
+  const state = readGeneratorStateFromControls();
+  seedInput.value = encodeSeedState(state);
+  generateLayout(state);
+}
+
 function setLayout(layout: MazeLayout): void {
   currentLayout = layout;
+  selectedRail = null;
+  renderRailDetail(null);
   viewer.setBounds(currentBounds());
   viewer.setLayout(layout);
   statsContent.innerHTML = `
@@ -184,6 +343,11 @@ function setLayout(layout: MazeLayout): void {
     <div><span>${markLatin("Difficulty")}</span><strong>${markLatin(layout.MapMeta.MazeDiff.toFixed(2))}</strong></div>
     <div><span>${markLatin("Start")}</span><strong>${markLatin(String(layout.Rail.filter((rail) => rail.Rail_ID.includes("Start")).length))}</strong></div>
     <div><span>${markLatin("End")}</span><strong>${markLatin(String(layout.Rail.filter((rail) => rail.Rail_ID.includes("End")).length))}</strong></div>
+    <div><span>${markLatin("Checkpoints")}</span><strong>${markLatin(String(layout.Rail.filter((rail) => rail.Rail_ID.toLowerCase().includes("checkpoint")).length))}</strong></div>
+    <div><span>${markLatin("Spins")}</span><strong>${markLatin(`${layout.MapMeta.SpinCount ?? 0}/${layout.MapMeta.MaxSpins ?? 0}`)}</strong></div>
+    ${(layout.MapMeta.SegmentDiffs ?? [])
+      .map((diff, index) => `<div class="segment-stat"><span>${markLatin(`Segment ${index + 1}`)}</span><strong>${markLatin(diff.toFixed(2))}</strong></div>`)
+      .join("")}
   `;
 }
 
@@ -291,15 +455,28 @@ function renderLog(logs: { kind: string; message: string }[]): void {
 }
 
 function randomizeSeed(): void {
-  seedInput.value = createRandomSeed();
-  generateLayout();
+  const state = createRandomSeedState();
+  seedInput.value = encodeSeedState(state);
+  generateLayout(state);
 }
 
 function toggleLogDock(): void {
   const isCollapsed = logDock.classList.toggle("is-collapsed");
-  logToggleBtn.textContent = isCollapsed ? "展开" : "收起";
   logToggleBtn.title = isCollapsed ? "展开生成日志内容。" : "收起生成日志内容。";
   logToggleBtn.setAttribute("aria-expanded", String(!isCollapsed));
+}
+
+function toggleSection(button: HTMLButtonElement): void {
+  const target = button.dataset.collapseTarget;
+  if (!target) return;
+
+  const section = document.querySelector<HTMLElement>(`.collapsible-section[data-panel="${target}"]`);
+  if (!section) return;
+
+  const isCollapsed = section.classList.toggle("is-collapsed");
+  const title = section.querySelector("h2")?.textContent ?? "Panel";
+  button.title = `${isCollapsed ? "展开" : "收起"} ${title} 面板。`;
+  button.setAttribute("aria-expanded", String(!isCollapsed));
 }
 
 function refreshBoundsOnly(): void {
@@ -350,7 +527,7 @@ function handleFile(file: File): void {
       renderLog([{ kind: "info", message: `Loaded ${file.name}` }]);
     } else {
       csvText = text;
-      generateLayout();
+      generateFromSeedInput();
     }
   };
   reader.readAsText(file);
@@ -364,11 +541,16 @@ function fmt(value: number): string {
   return Number(value.toFixed(3)).toString();
 }
 
-generateBtn.addEventListener("click", generateLayout);
+generateBtn.addEventListener("click", regenerateWithCurrentConfig);
 downloadBtn.addEventListener("click", downloadLayout);
 resetCameraBtn.addEventListener("click", () => viewer.resetCamera());
 randomSeedBtn.addEventListener("click", randomizeSeed);
+seedInput.addEventListener("input", () => {
+  window.clearTimeout(seedInputTimer);
+  seedInputTimer = window.setTimeout(generateFromSeedInput, 250);
+});
 logToggleBtn.addEventListener("click", toggleLogDock);
+collapseToggles.forEach((button) => button.addEventListener("click", () => toggleSection(button)));
 moveCenterBtn.addEventListener("click", moveLayoutToCenter);
 fitBoundsBtn.addEventListener("click", fitLayoutBounds);
 historyBackBtn.addEventListener("click", () => viewer.goBack());
@@ -405,6 +587,6 @@ dropZone.addEventListener("drop", (event) => {
 });
 
 updateFocusButton();
-generateLayout();
+generateFromSeedInput();
 gsap.from(".panel", { x: -20, opacity: 0, duration: 0.45, ease: "power3.out" });
 gsap.from(".log-dock", { y: 18, opacity: 0, duration: 0.45, delay: 0.12, ease: "power3.out" });

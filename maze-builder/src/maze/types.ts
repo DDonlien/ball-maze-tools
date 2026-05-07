@@ -50,6 +50,7 @@ export interface RailInstance {
   rotAbs: RotAbs;
   sizeRev: Vector3;
   diffAct: number;
+  spinRot: number;
   prevIndex: number;
   nextIndices: number[];
   exitStatus: RailExitStatus[];
@@ -95,6 +96,10 @@ export interface MazeLayout {
     LevelName: string;
     RailCount: number;
     MazeDiff: number;
+    CheckpointCount?: number;
+    SegmentDiffs?: number[];
+    SpinCount?: number;
+    MaxSpins?: number;
   };
   Rail: MazeRailJson[];
 }
@@ -102,6 +107,7 @@ export interface MazeLayout {
 export interface GeneratorOptions {
   targetDifficulty: number;
   targetCheckpoints: number;
+  maxSpins: number;
   boundaryMode: 0 | 1;
   bounds: Vector3;
   seed?: number;
@@ -156,6 +162,15 @@ export class Vector3 {
       [ry, rz] = [-rz, ry];
     }
     return new Vector3(this.x, ry, rz);
+  }
+
+  rotateY(rotIndex: number): Vector3 {
+    let rx = this.x;
+    let rz = this.z;
+    for (let i = 0; i < ((rotIndex % 4) + 4) % 4; i += 1) {
+      [rx, rz] = [-rz, rx];
+    }
+    return new Vector3(rx, this.y, rz);
   }
 
   clone(): Vector3 {
