@@ -162,9 +162,12 @@ export class MazeGenerator {
     const maxY = radiusY - start.sizeRev.y + 1;
     const startPos = new Vector3(this.random.int(Math.min(minX, maxX), Math.max(minX, maxX)), this.random.int(Math.min(minY, maxY), Math.max(minY, maxY)), 0);
 
-    const startResult = this.placeRailV2(start.rowName, startPos, 0, { p: 0, y: 0, r: 0 }, 0, 1, -1, 0);
-    if (typeof startResult === "string") throw new Error(`Start Rail Placement Failed: ${startResult}`);
-    this.log("success", `Start: ${start.rowName} at ${startPos.asTuple().join(",")}`);
+    const startRotAbs = { p: 0, y: 0, r: 0 };
+    const startResult = this.placeRailV2(start.rowName, startPos, 0, startRotAbs, 0, 1, -1, 0);
+    if (typeof startResult === "string") {
+      throw new Error(`Start Rail Placement Failed: ${startResult}, pos=${this.formatVec(startPos)}, rot=${this.formatRot(startRotAbs)}`);
+    }
+    this.log("success", `Start: ${start.rowName}, ${this.formatRailPose(startResult)}`);
 
     const checkpointTarget = Math.max(0, Math.floor(this.options.targetCheckpoints));
     const segmentTargetDiff = checkpointTarget > 0 ? this.options.targetDifficulty / checkpointTarget : Infinity;
@@ -174,8 +177,11 @@ export class MazeGenerator {
     while (true) {
       const allCheckpointsPlaced = this.placedCheckpointsCount >= checkpointTarget;
       const mustEnd = this.currentTotalDifficulty >= this.options.targetDifficulty && allCheckpointsPlaced;
+      const hasSegmentProgress = this.segmentDiffAcc > 0;
+      if (forceCheckpoint && !hasSegmentProgress) forceCheckpoint = false;
       const triggerCheckpoint =
         !mustEnd &&
+        hasSegmentProgress &&
         (forceCheckpoint ||
           (this.placedCheckpointsCount < checkpointTarget && this.segmentDiffAcc > segmentTargetDiff));
 
@@ -241,7 +247,10 @@ export class MazeGenerator {
                 this.segmentDiffAcc = 0;
                 forceCheckpoint = false;
                 success = true;
-                this.log("success", `Checkpoint ${this.placedCheckpointsCount}/${checkpointTarget}: ${checkpoint.railId} after fork ${result.railId}`);
+                this.log(
+                  "success",
+                  `Checkpoint ${this.placedCheckpointsCount}/${checkpointTarget}: ${checkpoint.railId}, ${this.formatRailPose(checkpoint)} after fork ${result.railId}, fork ${this.formatRailPose(result)}`,
+                );
                 break;
               }
 
@@ -262,11 +271,18 @@ export class MazeGenerator {
       }
 
       if (!success) {
-        this.log("fail", `Step failed: ${JSON.stringify(Object.fromEntries(failReasons))}`);
+        this.log(
+          "fail",
+          `Step failed at pos=${this.formatVec(connector.targetPos)}, parent=${connector.parentId}, exit=${connector.parentExitIdx}, baseDir=${forwardDirFromRotAbs(this.exitRotAbs(connector))}, baseRot=${this.formatRot(this.exitRotAbs(connector))}: ${JSON.stringify(Object.fromEntries(failReasons))}`,
+        );
+        if (forceCheckpoint) {
+          forceCheckpoint = false;
+          this.log("warn", "Checkpoint fork placement failed. Resuming normal growth until the segment threshold is reached again.");
+        }
       } else if (placed) {
         this.log(
           "success",
-          `[Step ${placed.railIndex}] ${placedId}, attempts=${attempts}, diff=${placed.diffAct.toFixed(2)}, backtracks=${this.backtrackCount}`,
+          `[Step ${placed.railIndex}] ${placedId}, ${this.formatRailPose(placed)}, attempts=${attempts}, diff=${placed.diffAct.toFixed(2)}, backtracks=${this.backtrackCount}`,
         );
       }
 
@@ -462,7 +478,12 @@ export class MazeGenerator {
     this.globalIndexCounter -= 1;
     this.currentTotalDifficulty -= lastRail.diffAct;
     if (lastRail.spinRot !== 0) this.usedSpinCount = Math.max(0, this.usedSpinCount - 1);
-    this.segmentDiffAcc = Math.max(0, this.segmentDiffAcc - lastRail.diffAct);
+    if (this.requireConfig(lastRail.railId).isCheckpoint) {
+      this.placedCheckpointsCount = Math.max(0, this.placedCheckpointsCount - 1);
+      this.segmentDiffAcc = Math.max(0, (this.segmentDiffs.pop() ?? 0) - lastRail.diffAct);
+    } else {
+      this.segmentDiffAcc = Math.max(0, this.segmentDiffAcc - lastRail.diffAct);
+    }
     this.removeOpenConnectorsForParent(lastRail.railIndex);
     for (const cell of lastRail.occupiedCellsRev) {
       const key = keyOf(cell.asTuple());
@@ -650,6 +671,26 @@ export class MazeGenerator {
     const config = this.configMap.get(railId);
     if (!config) throw new Error(`Unknown rail id: ${railId}`);
     return config;
+  }
+
+  private exitRotAbs(connector: OpenConnector): RotAbs {
+    return {
+      p: mod360(connector.parentRotAbs.p + connector.parentExitLocalRot.p),
+      y: mod360(connector.parentRotAbs.y + connector.parentExitLocalRot.y),
+      r: mod360(connector.parentRotAbs.r + connector.parentExitLocalRot.r),
+    };
+  }
+
+  private formatRailPose(rail: RailInstance): string {
+    return `pos=${this.formatVec(rail.posRev)}, dir=${forwardDirFromRotAbs(rail.rotAbs)}, rot=${this.formatRot(rail.rotAbs)}`;
+  }
+
+  private formatVec(vec: Vector3): string {
+    return `(${vec.x},${vec.y},${vec.z})`;
+  }
+
+  private formatRot(rot: RotAbs): string {
+    return `(p=${rot.p},y=${rot.y},r=${rot.r})`;
   }
 
   private log(kind: GenerationLogEntry["kind"], message: string): void {

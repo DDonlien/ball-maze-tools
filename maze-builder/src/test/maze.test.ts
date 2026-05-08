@@ -237,4 +237,19 @@ describe("TypeScript maze port", () => {
       expect(parent?.Exit.some((exit) => exit.TargetInstanceID === checkpoint.Rail_Index)).toBe(true);
     }
   });
+
+  it("does not force a checkpoint after backtracking removes all segment progress", () => {
+    const config = loadConfigFromCsv(railConfigCsv);
+    const layout = new MazeGenerator(config, {
+      seed: 654324621,
+      targetDifficulty: 25,
+      targetCheckpoints: 3,
+      maxSpins: 3,
+      bounds: new Vector3(13, 7, 3),
+    }).generate();
+
+    expect(layout.MapMeta.CheckpointCount).toBeGreaterThan(0);
+    expect(layout.MapMeta.SegmentDiffs).toHaveLength((layout.MapMeta.CheckpointCount ?? 0) + 1);
+    expect(layout.MapMeta.SegmentDiffs?.slice(0, -1).every((diff) => diff > 0)).toBe(true);
+  });
 });

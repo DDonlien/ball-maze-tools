@@ -15,6 +15,13 @@ interface RailMeta {
   segmentDiff: number;
 }
 
+interface VisualBounds {
+  center: THREE.Vector3;
+  size: THREE.Vector3;
+  min: THREE.Vector3;
+  max: THREE.Vector3;
+}
+
 export class MazeViewer {
   private scene = new THREE.Scene();
   private camera: THREE.PerspectiveCamera | THREE.OrthographicCamera;
@@ -23,7 +30,6 @@ export class MazeViewer {
   private raycaster = new THREE.Raycaster();
   private mouse = new THREE.Vector2();
   private root?: THREE.Group;
-  private blockMesh?: THREE.InstancedMesh;
   private spriteMap = new Map<number, THREE.Sprite>();
   private railDataMap = new Map<number, RailMeta>();
   private railArrowMap = new Map<number, number[]>();
@@ -282,31 +288,15 @@ export class MazeViewer {
       rails.reduce((count, rail) => count + rail.Exit.filter((exit) => exit.Exit_Pos_Abs).length + (rail.Prev_Index !== -1 ? 1 : 0), 0) || 1;
     const exitCount = rails.reduce((count, rail) => count + rail.Exit.filter((exit) => exit.Exit_Pos_Abs).length, 0) || 1;
 
-    this.blockMesh = new THREE.InstancedMesh(
-      new THREE.BoxGeometry(1, 1, 1),
-      new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 }),
-      Math.max(rails.length, 1),
-    );
-    this.blockMesh.userData.isBlock = true;
-    this.blockMesh.userData.instanceMap = [];
-    this.root.add(this.blockMesh);
-
     this.shaftMesh = new THREE.InstancedMesh(arrowGeos.shaft, new THREE.MeshLambertMaterial({ color: 0xffffff }), arrowCount);
     this.headMesh = new THREE.InstancedMesh(arrowGeos.head, new THREE.MeshLambertMaterial({ color: 0xffffff }), arrowCount);
     this.exitMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.7, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }), exitCount);
     this.root.add(this.shaftMesh, this.headMesh, this.exitMesh);
 
     const dummy = new THREE.Object3D();
-    let blockIdx = 0;
     rails.forEach((rail) => {
       const { center, size } = this.railBounds(rail);
       const color = this.railColor(rail.Rail_ID);
-      dummy.position.set(center.x, center.y, center.z);
-      dummy.rotation.set(0, 0, 0);
-      dummy.scale.set(size.x, size.y, size.z);
-      dummy.updateMatrix();
-      this.blockMesh?.setMatrixAt(blockIdx, dummy.matrix);
-      this.blockMesh?.setColorAt(blockIdx, color);
       const meta: RailMeta = {
         id: rail.Rail_Index,
         type: rail.Rail_ID,
@@ -318,32 +308,38 @@ export class MazeViewer {
         segmentDiff: difficultyByRail.get(rail.Rail_Index)?.segmentDiff ?? rail.Diff_Act,
       };
       this.railDataMap.set(rail.Rail_Index, meta);
-      this.blockMesh!.userData.instanceMap[blockIdx] = meta;
+      const block = new THREE.Mesh(
+        new THREE.BoxGeometry(size.x, size.y, size.z),
+        this.railMaterials(color, this.localBottomMaterialIndex(rail.Rot_Abs)),
+      );
+      block.position.copy(center);
+      block.userData.isBlock = true;
+      block.userData.railMeta = meta;
+      this.root?.add(block);
       this.addTextSprite(rail.Rail_Index, new THREE.Vector3(center.x, center.y, center.z));
-      blockIdx += 1;
     });
-    this.blockMesh.instanceMatrix.needsUpdate = true;
-    if (this.blockMesh.instanceColor) this.blockMesh.instanceColor.needsUpdate = true;
 
     let arrowIdx = 0;
     let exitIdx = 0;
     rails.forEach((rail) => {
-      const railBasis = this.getRailBasis(rail.Rot_Abs);
+      const railStart = this.absToView(rail.Pos_Abs);
       const prev = rails.find((candidate) => candidate.Rail_Index === rail.Prev_Index);
-      const connectedExit = prev?.Exit.find((exit) => exit.TargetInstanceID === rail.Rail_Index);
-      if (connectedExit) {
-        const pos = new THREE.Vector3(connectedExit.Exit_Pos_Abs.x, -connectedExit.Exit_Pos_Abs.y, connectedExit.Exit_Pos_Abs.z);
-        arrowIdx = this.addArrow(arrowIdx, pos.clone().sub(this.getDirVector(connectedExit.Exit_Dir_Abs).multiplyScalar(8)), 4, true, connectedExit.Exit_Dir_Abs, railBasis);
+      if (rail.Prev_Index !== -1) {
+        const connectedExit = prev?.Exit.find((exit) => exit.TargetInstanceID === rail.Rail_Index);
+        const dirAbs = connectedExit?.Exit_Dir_Abs ?? this.forwardDirFromRotAbs(rail.Rot_Abs);
+        const dir = this.getDirVector(dirAbs);
+        const tip = this.connectorBoundaryTip(rail.Pos_Rev, dirAbs);
+        arrowIdx = this.addArrowAt(arrowIdx, tip, dir, true);
         this.addArrowIndex(rail.Rail_Index, arrowIdx - 1);
       }
 
       rail.Exit.forEach((exit) => {
-        const pos = new THREE.Vector3(exit.Exit_Pos_Abs.x, -exit.Exit_Pos_Abs.y, exit.Exit_Pos_Abs.z);
         const dir = this.getDirVector(exit.Exit_Dir_Abs);
-        arrowIdx = this.addArrow(arrowIdx, pos.clone().sub(dir.clone().multiplyScalar(12)), 4, false, exit.Exit_Dir_Abs, railBasis);
+        const tip = this.connectorBoundaryTip(exit.Exit_Pos_Rev, exit.Exit_Dir_Abs);
+        arrowIdx = this.addArrowAt(arrowIdx, tip, dir, exit.IsConnected);
         this.addArrowIndex(rail.Rail_Index, arrowIdx - 1);
         dummy.scale.set(1, 1, 1);
-        dummy.position.copy(pos);
+        dummy.position.copy(tip);
         dummy.rotation.set(0, 0, 0);
         dummy.updateMatrix();
         this.exitMesh?.setMatrixAt(exitIdx, dummy.matrix);
@@ -353,8 +349,8 @@ export class MazeViewer {
 
       if (prev) {
         const pts = [
-          new THREE.Vector3(prev.Pos_Abs.x, -prev.Pos_Abs.y, prev.Pos_Abs.z),
-          new THREE.Vector3(rail.Pos_Abs.x, -rail.Pos_Abs.y, rail.Pos_Abs.z),
+          this.absToView(prev.Pos_Abs),
+          railStart,
         ];
         this.root?.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x303633, opacity: 0.22, transparent: true })));
       }
@@ -390,7 +386,7 @@ export class MazeViewer {
     return result;
   }
 
-  private railBounds(rail: MazeRailJson): { center: THREE.Vector3; size: THREE.Vector3 } {
+  private railBounds(rail: MazeRailJson): VisualBounds {
     const cells = this.visualCellsForRail(rail);
     const xs = cells.map((cell) => cell.x * GRID_TO_WORLD_SCALE);
     const ys = cells.map((cell) => -cell.y * GRID_TO_WORLD_SCALE);
@@ -401,9 +397,14 @@ export class MazeViewer {
     const maxY = Math.max(...ys);
     const minZ = Math.min(...zs);
     const maxZ = Math.max(...zs);
+    const center = new THREE.Vector3((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2);
+    const size = new THREE.Vector3(maxX - minX + GRID_TO_WORLD_SCALE - 1, maxY - minY + GRID_TO_WORLD_SCALE - 1, maxZ - minZ + GRID_TO_WORLD_SCALE - 1);
+    const half = size.clone().multiplyScalar(0.5);
     return {
-      center: new THREE.Vector3((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2),
-      size: new THREE.Vector3(maxX - minX + GRID_TO_WORLD_SCALE - 1, maxY - minY + GRID_TO_WORLD_SCALE - 1, maxZ - minZ + GRID_TO_WORLD_SCALE - 1),
+      center,
+      size,
+      min: center.clone().sub(half),
+      max: center.clone().add(half),
     };
   }
 
@@ -411,40 +412,53 @@ export class MazeViewer {
     return rail.Occupied_Cells_Rev.length > 0 ? rail.Occupied_Cells_Rev : [rail.Pos_Rev];
   }
 
-  private addArrow(
-    idx: number,
-    origin: THREE.Vector3,
-    length: number,
-    connected: boolean,
-    dirAbs: string,
-    basis: { fwd: THREE.Vector3; up: THREE.Vector3 },
-  ): number {
+  private addArrowAt(idx: number, tip: THREE.Vector3, direction: THREE.Vector3, connected: boolean): number {
     if (!this.shaftMesh || !this.headMesh) return idx;
+    const dir = direction.clone();
+    if (dir.length() < 0.001) return idx + 1;
+
     const dummy = new THREE.Object3D();
+    const length = 5;
     const headScale = 1.5;
     const shaftLen = Math.max(0.1, length - headScale);
-    const dir = this.getDirVector(dirAbs).normalize();
-    let vecZ = basis.up.clone().normalize();
-    if (Math.abs(dir.dot(vecZ)) > 0.99) vecZ = basis.fwd.clone().normalize();
+    dir.normalize();
+    let vecZ = Math.abs(dir.z) > 0.99 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1);
     const vecX = new THREE.Vector3().crossVectors(dir, vecZ).normalize();
     vecZ.crossVectors(vecX, dir).normalize();
     const quat = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(vecX, dir, vecZ));
     const color = new THREE.Color(connected ? 0x46d483 : 0xf06363);
 
     dummy.scale.set(1, shaftLen, 1);
-    dummy.position.copy(origin);
+    dummy.position.copy(tip).sub(dir.clone().multiplyScalar(length));
     dummy.quaternion.copy(quat);
     dummy.updateMatrix();
     this.shaftMesh.setMatrixAt(idx, dummy.matrix);
     this.shaftMesh.setColorAt(idx, color);
 
     dummy.scale.set(1, headScale, 1);
-    dummy.position.copy(origin).add(dir.clone().multiplyScalar(shaftLen));
+    dummy.position.copy(tip).sub(dir.clone().multiplyScalar(headScale));
     dummy.quaternion.copy(quat);
     dummy.updateMatrix();
     this.headMesh.setMatrixAt(idx, dummy.matrix);
     this.headMesh.setColorAt(idx, color);
     return idx + 1;
+  }
+
+  private absToView(pos: Vec3Dict): THREE.Vector3 {
+    return new THREE.Vector3(pos.x, -pos.y, pos.z);
+  }
+
+  private revToView(pos: Vec3Dict): THREE.Vector3 {
+    return new THREE.Vector3(pos.x * GRID_TO_WORLD_SCALE, -pos.y * GRID_TO_WORLD_SCALE, pos.z * GRID_TO_WORLD_SCALE);
+  }
+
+  private connectorBoundaryTip(connector: Vec3Dict, dirAbs: string): THREE.Vector3 {
+    const dir = this.dirCell(dirAbs);
+    return this.revToView({
+      x: connector.x - dir.x * 0.5,
+      y: connector.y - dir.y * 0.5,
+      z: connector.z - dir.z * 0.5,
+    });
   }
 
   private addTextSprite(id: number, pos: THREE.Vector3): void {
@@ -493,9 +507,15 @@ export class MazeViewer {
 
     for (const hit of intersects) {
       const obj = hit.object as THREE.Object3D & { userData: Record<string, unknown> };
-      if (obj.userData.isBlock && hit.instanceId !== undefined) {
-        found = (obj.userData.instanceMap as RailMeta[])[hit.instanceId] ?? null;
-        break;
+      if (obj.userData.isBlock) {
+        if (obj.userData.railMeta) {
+          found = obj.userData.railMeta as RailMeta;
+          break;
+        }
+        if (hit.instanceId !== undefined) {
+          found = (obj.userData.instanceMap as RailMeta[])[hit.instanceId] ?? null;
+          break;
+        }
       }
       if (obj.userData.isText) {
         found = this.railDataMap.get(Number(obj.userData.id)) ?? null;
@@ -601,22 +621,61 @@ export class MazeViewer {
   private railColor(railId: string): THREE.Color {
     const lower = railId.toLowerCase();
     if (lower.includes("start")) return new THREE.Color(0x2856ff);
-    if (lower.includes("end")) return new THREE.Color(0x303633);
-    if (lower.includes("checkpoint")) return new THREE.Color(0x6f7cff);
+    if (lower.includes("end")) return new THREE.Color(0x35b86b);
+    if (lower.includes("checkpoint")) return new THREE.Color(0xf2c84b);
     return new THREE.Color(0xe9ecff);
   }
 
-  private getRailBasis(rotAbs: { p?: number; y?: number; r?: number }): { fwd: THREE.Vector3; up: THREE.Vector3 } {
-    const euler = new THREE.Euler(
-      THREE.MathUtils.degToRad(rotAbs.r ?? 0),
-      THREE.MathUtils.degToRad(rotAbs.p ?? 0),
-      THREE.MathUtils.degToRad(rotAbs.y ?? 0),
-      "ZYX",
+  private forwardDirFromRotAbs(rotAbs: { p?: number; y?: number; r?: number }): "+X" | "+Y" | "-X" | "-Y" | "+Z" | "-Z" {
+    const pitch = ((rotAbs.p ?? 0) % 360 + 360) % 360;
+    if (Math.abs(pitch - 90) < 1) return "+Z";
+    if (Math.abs(pitch - 270) < 1) return "-Z";
+    const yawIndex = ((Math.trunc((rotAbs.y ?? 0) / 90) % 4) + 4) % 4;
+    return ["+X", "+Y", "-X", "-Y"][yawIndex] as "+X" | "+Y" | "-X" | "-Y";
+  }
+
+  private railMaterials(color: THREE.Color, darkerMaterialIndex: number): THREE.MeshLambertMaterial[] {
+    const darker = color.clone().multiplyScalar(0.55);
+    return Array.from({ length: 6 }, (_, index) =>
+      new THREE.MeshLambertMaterial({
+        color: index === darkerMaterialIndex ? darker : color,
+        transparent: true,
+        opacity: 0.5,
+      }),
     );
-    return {
-      fwd: new THREE.Vector3(1, 0, 0).applyEuler(euler),
-      up: new THREE.Vector3(0, 0, 1).applyEuler(euler),
+  }
+
+  private localBottomMaterialIndex(rotAbs: { p?: number; y?: number; r?: number }): number {
+    const bottom = this.transformLogicalAxis({ x: 0, y: 0, z: -1 }, rotAbs);
+    if (bottom.x > 0) return 0;
+    if (bottom.x < 0) return 1;
+    if (bottom.y > 0) return 3;
+    if (bottom.y < 0) return 2;
+    if (bottom.z > 0) return 4;
+    return 5;
+  }
+
+  private transformLogicalAxis(
+    axis: { x: number; y: number; z: number },
+    rotAbs: { p?: number; y?: number; r?: number },
+  ): { x: number; y: number; z: number } {
+    let { x, y, z } = axis;
+    const rotate = (count: number, step: () => void) => {
+      for (let i = 0; i < ((count % 4) + 4) % 4; i += 1) step();
     };
+    const idx = (degrees: number | undefined) => Math.trunc((degrees ?? 0) / 90) % 4;
+
+    rotate(idx(rotAbs.r), () => {
+      [y, z] = [-z, y];
+    });
+    rotate(idx(rotAbs.p), () => {
+      [x, z] = [-z, x];
+    });
+    rotate(idx(rotAbs.y), () => {
+      [x, y] = [-y, x];
+    });
+
+    return { x, y, z };
   }
 
   private getDirVector(dirStr: string): THREE.Vector3 {
@@ -626,7 +685,17 @@ export class MazeViewer {
     if (dirStr === "-Y") return new THREE.Vector3(0, 1, 0);
     if (dirStr === "+Z") return new THREE.Vector3(0, 0, 1);
     if (dirStr === "-Z") return new THREE.Vector3(0, 0, -1);
-    return new THREE.Vector3(0, 0, 1);
+    return new THREE.Vector3(1, 0, 0);
+  }
+
+  private dirCell(dirStr: string): Vec3Dict {
+    if (dirStr === "+X") return { x: 1, y: 0, z: 0 };
+    if (dirStr === "-X") return { x: -1, y: 0, z: 0 };
+    if (dirStr === "+Y") return { x: 0, y: 1, z: 0 };
+    if (dirStr === "-Y") return { x: 0, y: -1, z: 0 };
+    if (dirStr === "+Z") return { x: 0, y: 0, z: 1 };
+    if (dirStr === "-Z") return { x: 0, y: 0, z: -1 };
+    return { x: 1, y: 0, z: 0 };
   }
 
   private addArrowIndex(railId: number, arrowIdx: number): void {
