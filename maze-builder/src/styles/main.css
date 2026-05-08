@@ -479,6 +479,31 @@ button:hover {
   white-space: nowrap;
 }
 
+.editor-status {
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
+  border: 1px solid #deded8;
+  background: #eef7f1;
+  color: #276143;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.editor-status.is-rotate {
+  background: #eef2ff;
+  color: #3656b1;
+}
+
+.editor-status.is-delete {
+  background: #fff0ee;
+  color: #a84235;
+  border-color: #e7b9b1;
+}
+
 .primary-tool {
   margin-left: auto;
   min-width: 118px;

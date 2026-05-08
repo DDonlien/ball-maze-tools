@@ -71,6 +71,7 @@ export interface BakedExit {
   Exit_Pos_Abs: Vec3Dict;
   Exit_Rot_Abs: RotAbs;
   Exit_Dir_Abs: DirAbs;
+  SpinDiff?: number[];
   IsConnected: boolean;
   TargetInstanceID: number;
 }
@@ -100,6 +101,7 @@ export interface MazeLayout {
     SegmentDiffs?: number[];
     SpinCount?: number;
     MaxSpins?: number;
+    Seed?: string;
   };
   Rail: MazeRailJson[];
 }

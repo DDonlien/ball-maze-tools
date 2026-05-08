@@ -34,18 +34,57 @@ function rotIndexFromDegrees(degrees: number): number {
   return Math.trunc(degrees / 90) % 4;
 }
 
-function transformByRotAbs(vec: Vector3, rotAbs: RotAbs): Vector3 {
+export function transformByRotAbs(vec: Vector3, rotAbs: RotAbs): Vector3 {
   return vec
     .rotateX(rotIndexFromDegrees(rotAbs.r))
     .rotateY(rotIndexFromDegrees(rotAbs.p))
     .rotateZ(rotIndexFromDegrees(rotAbs.y));
 }
 
-function forwardDirFromRotAbs(rotAbs: RotAbs): DirAbs {
-  const pitch = mod360(rotAbs.p);
-  if (Math.abs(pitch - 90) < 1) return "+Z";
-  if (Math.abs(pitch - 270) < 1) return "-Z";
-  return ["+X", "+Y", "-X", "-Y"][((rotIndexFromDegrees(rotAbs.y) % 4) + 4) % 4] as DirAbs;
+function sameVector(a: Vector3, b: Vector3): boolean {
+  return a.x === b.x && a.y === b.y && a.z === b.z;
+}
+
+export function composeRotAbs(parent: RotAbs, local: RotAbs): RotAbs {
+  const basis = [
+    new Vector3(1, 0, 0),
+    new Vector3(0, 1, 0),
+    new Vector3(0, 0, 1),
+  ];
+  const target = basis.map((vec) => transformByRotAbs(transformByRotAbs(vec, local), parent));
+
+  for (const p of [0, 90, 180, 270]) {
+    for (const y of [0, 90, 180, 270]) {
+      for (const r of [0, 90, 180, 270]) {
+        const candidate = { p, y, r };
+        const matches = basis.every((vec, index) => sameVector(transformByRotAbs(vec, candidate), target[index]));
+        if (matches) return candidate;
+      }
+    }
+  }
+
+  throw new Error(`Unable to compose rotations parent=${JSON.stringify(parent)} local=${JSON.stringify(local)}`);
+}
+
+export function forwardDirFromRotAbs(rotAbs: RotAbs): DirAbs {
+  return dirFromVector(transformByRotAbs(new Vector3(1, 0, 0), rotAbs));
+}
+
+function dirFromVector(vec: Vector3): DirAbs {
+  const values = [
+    { dir: "+X" as const, value: vec.x },
+    { dir: "-X" as const, value: -vec.x },
+    { dir: "+Y" as const, value: vec.y },
+    { dir: "-Y" as const, value: -vec.y },
+    { dir: "+Z" as const, value: vec.z },
+    { dir: "-Z" as const, value: -vec.z },
+  ];
+  return values.reduce((best, item) => (item.value > best.value ? item : best)).dir;
+}
+
+export function exitDirFromLocalRot(railRotAbs: RotAbs, exitLocalRot: RotAbs): DirAbs {
+  const localExitForward = transformByRotAbs(new Vector3(1, 0, 0), exitLocalRot);
+  return dirFromVector(transformByRotAbs(localExitForward, railRotAbs));
 }
 
 const RIGHT_HANDED_L90_MODEL_OVERRIDES = new Set([
@@ -307,13 +346,9 @@ export class MazeGenerator {
         const worldLogicOffset = transformByRotAbs(logicOffset, rail.rotAbs);
         const worldLogicPos = rail.posRev.add(worldLogicOffset);
         const localRot = cfg.exitsLogic[i].LocalRot;
-        const exitRotAbs = {
-          p: mod360(rail.rotAbs.p + localRot.p),
-          y: mod360(rail.rotAbs.y + localRot.y),
-          r: mod360(rail.rotAbs.r + localRot.r),
-        };
+        const exitRotAbs = composeRotAbs(rail.rotAbs, localRot);
 
-        const exitDirAbs = forwardDirFromRotAbs(exitRotAbs);
+        const exitDirAbs = exitDirFromLocalRot(rail.rotAbs, localRot);
 
         return {
           Index: i,
@@ -321,6 +356,7 @@ export class MazeGenerator {
           Exit_Pos_Abs: worldLogicPos.toWorldDict(GRID_TO_WORLD_SCALE),
           Exit_Rot_Abs: exitRotAbs,
           Exit_Dir_Abs: exitDirAbs,
+          SpinDiff: [...cfg.exitsLogic[i].SpinDiff],
           IsConnected: status.IsConnected,
           TargetInstanceID: status.TargetID !== -1 ? status.TargetID : -1,
         };
@@ -332,7 +368,7 @@ export class MazeGenerator {
         Pos_Rev: rail.posRev.toDict(),
         Pos_Abs: rail.posRev.toWorldDict(GRID_TO_WORLD_SCALE),
         Rot_Abs: cloneRot(rail.rotAbs),
-        Dir_Abs: this.getUeDirStr(rail.rotIndex),
+        Dir_Abs: forwardDirFromRotAbs(rail.rotAbs),
         Size_Rev: rail.sizeRev.toDict(),
         Occupied_Cells_Rev: rail.occupiedCellsRev.map((cell) => cell.toDict()),
         Diff_Base: 0,
@@ -499,6 +535,7 @@ export class MazeGenerator {
     const status = parent.exitStatus[exitIdx];
     status.IsConnected = false;
     status.TargetID = -1;
+    parent.nextIndices = parent.nextIndices.filter((index) => index !== lastRail.railIndex);
 
     const exitData = this.requireConfig(parent.railId).exitsLogic[exitIdx];
     const forbiddenCandidates = new Set(lastRail.forbiddenSiblings);
@@ -577,13 +614,11 @@ export class MazeGenerator {
 
   private calculateRailTransform(connector: OpenConnector, spinRot: number): [number, RotAbs, number] {
     const rotIdx = (connector.parentRotIndex + connector.parentExitRotOffset) % 4;
+    const exitRotAbs = composeRotAbs(connector.parentRotAbs, connector.parentExitLocalRot);
+    const targetRotAbs = composeRotAbs(exitRotAbs, { p: 0, y: 0, r: spinRot * 90 });
     return [
       rotIdx,
-      {
-        p: mod360(connector.parentRotAbs.p + connector.parentExitLocalRot.p),
-        y: mod360(connector.parentRotAbs.y + connector.parentExitLocalRot.y),
-        r: mod360(connector.parentRotAbs.r + connector.parentExitLocalRot.r + spinRot * 90),
-      },
+      targetRotAbs,
       spinRot,
     ];
   }
@@ -663,10 +698,6 @@ export class MazeGenerator {
     return null;
   }
 
-  private getUeDirStr(rotIdx: number): DirAbs {
-    return ["+X", "+Y", "-X", "-Y"][((rotIdx % 4) + 4) % 4] as DirAbs;
-  }
-
   private requireConfig(railId: string): RailConfigItem {
     const config = this.configMap.get(railId);
     if (!config) throw new Error(`Unknown rail id: ${railId}`);
@@ -674,11 +705,7 @@ export class MazeGenerator {
   }
 
   private exitRotAbs(connector: OpenConnector): RotAbs {
-    return {
-      p: mod360(connector.parentRotAbs.p + connector.parentExitLocalRot.p),
-      y: mod360(connector.parentRotAbs.y + connector.parentExitLocalRot.y),
-      r: mod360(connector.parentRotAbs.r + connector.parentExitLocalRot.r),
-    };
+    return composeRotAbs(connector.parentRotAbs, connector.parentExitLocalRot);
   }
 
   private formatRailPose(rail: RailInstance): string {

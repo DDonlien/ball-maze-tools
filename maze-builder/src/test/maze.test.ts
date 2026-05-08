@@ -2,14 +2,65 @@ import { describe, expect, it } from "vitest";
 import railConfigCsv from "../../rail_config.csv?raw";
 import { loadConfigFromCsv } from "../maze/csv";
 import { calculateOccupiedCells, calculateOccupiedCellsWithRotAbs, MazeGenerator } from "../maze/generator";
-import { Vector3 } from "../maze/types";
+import { MazeLayout, Vector3 } from "../maze/types";
 
 function expectedDirFromRot(rot: { p: number; y: number; r: number }): "+X" | "+Y" | "-X" | "-Y" | "+Z" | "-Z" {
-  const pitch = ((rot.p % 360) + 360) % 360;
-  if (Math.abs(pitch - 90) < 1) return "+Z";
-  if (Math.abs(pitch - 270) < 1) return "-Z";
-  const yawIndex = (((Math.trunc(rot.y / 90) % 4) + 4) % 4);
-  return ["+X", "+Y", "-X", "-Y"][yawIndex] as "+X" | "+Y" | "-X" | "-Y";
+  return expectedDirFromVector(rotateByRot({ x: 1, y: 0, z: 0 }, rot));
+}
+
+function rotateByRot(vec: { x: number; y: number; z: number }, rot: { p: number; y: number; r: number }): { x: number; y: number; z: number } {
+  let { x, y, z } = vec;
+  const rotate = (degrees: number, step: () => void) => {
+    for (let i = 0; i < (((Math.trunc(degrees / 90) % 4) + 4) % 4); i += 1) step();
+  };
+  rotate(rot.r, () => {
+    [y, z] = [-z, y];
+  });
+  rotate(rot.p, () => {
+    [x, z] = [-z, x];
+  });
+  rotate(rot.y, () => {
+    [x, y] = [-y, x];
+  });
+  return { x, y, z };
+}
+
+function expectedDirFromVector(vec: { x: number; y: number; z: number }): "+X" | "+Y" | "-X" | "-Y" | "+Z" | "-Z" {
+  const values = [
+    ["+X", vec.x],
+    ["-X", -vec.x],
+    ["+Y", vec.y],
+    ["-Y", -vec.y],
+    ["+Z", vec.z],
+    ["-Z", -vec.z],
+  ] as const;
+  return values.reduce((best, item) => (item[1] > best[1] ? item : best))[0];
+}
+
+function expectConnectedLayoutConsistent(layout: MazeLayout): void {
+  for (const rail of layout.Rail) {
+    expect(new Set(rail.Next_Index).size).toBe(rail.Next_Index.length);
+    for (const nextIndex of rail.Next_Index) {
+      expect(rail.Exit.some((exit) => exit.TargetInstanceID === nextIndex)).toBe(true);
+    }
+
+    for (const exit of rail.Exit.filter((item) => item.TargetInstanceID !== -1)) {
+      const child = layout.Rail.find((item) => item.Rail_Index === exit.TargetInstanceID);
+      expect(child).toBeDefined();
+      expect({ parent: rail.Rail_Index, child: child?.Rail_Index, exitPos: exit.Exit_Pos_Rev, childPos: child?.Pos_Rev }).toEqual({
+        parent: rail.Rail_Index,
+        child: child?.Rail_Index,
+        exitPos: child?.Pos_Rev,
+        childPos: child?.Pos_Rev,
+      });
+      expect({ parent: rail.Rail_Index, child: child?.Rail_Index, exitDir: exit.Exit_Dir_Abs, childDir: child?.Dir_Abs }).toEqual({
+        parent: rail.Rail_Index,
+        child: child?.Rail_Index,
+        exitDir: exit.Exit_Dir_Abs,
+        childDir: exit.Exit_Dir_Abs,
+      });
+    }
+  }
 }
 
 describe("TypeScript maze port", () => {
@@ -189,12 +240,10 @@ describe("TypeScript maze port", () => {
     const rail = layout.Rail.find((item) => item.Rail_ID === "BP_Straight_FR90_X1_Y1_Z1_Rail" && Math.abs(item.Rot_Abs.p - 90) < 1);
     expect(rail).toBeDefined();
     expect(rail?.Exit.some((exit) => exit.Exit_Pos_Rev.z !== rail.Pos_Rev.z)).toBe(true);
-    for (const exit of rail?.Exit ?? []) {
-      expect(exit.Exit_Dir_Abs).toBe(expectedDirFromRot(exit.Exit_Rot_Abs));
-    }
+    expect(rail?.Exit.some((exit) => exit.Exit_Dir_Abs !== "+Z")).toBe(true);
   });
 
-  it("derives every exported exit direction from exit rotation instead of offset direction", () => {
+  it("derives exported exit direction by applying local exit rotation before rail rotation", () => {
     const config = loadConfigFromCsv(railConfigCsv);
     const layout = new MazeGenerator(config, {
       seed: 790943075,
@@ -205,11 +254,16 @@ describe("TypeScript maze port", () => {
     }).generate();
 
     for (const rail of layout.Rail) {
+      const cfg = config.get(rail.Rail_ID);
+      expect(cfg).toBeDefined();
       for (const exit of rail.Exit) {
+        const localRot = cfg?.exitsLogic[exit.Index].LocalRot ?? { p: 0, y: 0, r: 0 };
+        const localForward = rotateByRot({ x: 1, y: 0, z: 0 }, localRot);
+        const expectedDir = expectedDirFromVector(rotateByRot(localForward, rail.Rot_Abs));
         expect({ rail: rail.Rail_ID, index: exit.Index, dir: exit.Exit_Dir_Abs }).toEqual({
           rail: rail.Rail_ID,
           index: exit.Index,
-          dir: expectedDirFromRot(exit.Exit_Rot_Abs),
+          dir: expectedDir,
         });
       }
     }
@@ -251,5 +305,63 @@ describe("TypeScript maze port", () => {
     expect(layout.MapMeta.CheckpointCount).toBeGreaterThan(0);
     expect(layout.MapMeta.SegmentDiffs).toHaveLength((layout.MapMeta.CheckpointCount ?? 0) + 1);
     expect(layout.MapMeta.SegmentDiffs?.slice(0, -1).every((diff) => diff > 0)).toBe(true);
+  });
+
+  it("keeps child enter direction aligned with the parent exit after pitched fork exits", () => {
+    const config = loadConfigFromCsv(railConfigCsv);
+    const layout = new MazeGenerator(config, {
+      seed: 2106175761,
+      targetDifficulty: 15,
+      targetCheckpoints: 3,
+      maxSpins: 1,
+      bounds: new Vector3(13, 11, 5),
+    }).generate();
+
+    for (const parent of layout.Rail) {
+      for (const exit of parent.Exit.filter((item) => item.TargetInstanceID !== -1)) {
+        const child = layout.Rail.find((rail) => rail.Rail_Index === exit.TargetInstanceID);
+        expect(child).toBeDefined();
+        expect({
+          parent: parent.Rail_Index,
+          exit: exit.Index,
+          child: child?.Rail_Index,
+          exitDir: exit.Exit_Dir_Abs,
+          childEnterDir: expectedDirFromRot(child?.Rot_Abs ?? { p: 0, y: 0, r: 0 }),
+        }).toEqual({
+          parent: parent.Rail_Index,
+          exit: exit.Index,
+          child: child?.Rail_Index,
+          exitDir: exit.Exit_Dir_Abs,
+          childEnterDir: exit.Exit_Dir_Abs,
+        });
+      }
+    }
+  });
+
+  it("keeps connected target indices, positions, and directions consistent for the reported spin seed", () => {
+    const config = loadConfigFromCsv(railConfigCsv);
+    const layout = new MazeGenerator(config, {
+      seed: 1977755683,
+      targetDifficulty: 9,
+      targetCheckpoints: 0,
+      maxSpins: 4,
+      bounds: new Vector3(7, 7, 7),
+    }).generate();
+
+    expectConnectedLayoutConsistent(layout);
+  });
+
+  it("keeps connected target indices, positions, and directions consistent when a spin is used", () => {
+    const config = loadConfigFromCsv(railConfigCsv);
+    const layout = new MazeGenerator(config, {
+      seed: 1002,
+      targetDifficulty: 18,
+      targetCheckpoints: 1,
+      maxSpins: 4,
+      bounds: new Vector3(13, 11, 7),
+    }).generate();
+
+    expect(layout.MapMeta.SpinCount).toBeGreaterThan(0);
+    expectConnectedLayoutConsistent(layout);
   });
 });

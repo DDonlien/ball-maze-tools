@@ -2,10 +2,10 @@ import gsap from "gsap";
 import railConfigCsv from "../rail_config.csv?raw";
 import sampleLayoutRaw from "../maze_layout.json?raw";
 import { loadConfigFromCsv } from "./maze/csv";
-import { MazeGenerator } from "./maze/generator";
+import { calculateOccupiedCellsWithRotAbs, composeRotAbs, exitDirFromLocalRot, MazeGenerator, transformByRotAbs } from "./maze/generator";
 import { DEFAULT_GENERATOR_OPTIONS, GRID_TO_WORLD_SCALE } from "./maze/constants";
-import { MazeLayout, Vec3Dict, Vector3 } from "./maze/types";
-import { MazeViewer } from "./viewer/MazeViewer";
+import { MazeLayout, MazeRailJson, RotAbs, Vec3Dict, Vector3 } from "./maze/types";
+import { EditorMode, MazeViewer, RailEditAction, RailMeta } from "./viewer/MazeViewer";
 import "./styles/main.css";
 
 const app = document.querySelector<HTMLDivElement>("#app");
@@ -184,6 +184,7 @@ app.innerHTML = `
         <button id="historyBackBtn" class="tool-chip" title="返回上一个相机 focus。">返回</button>
         <button id="historyForwardBtn" class="tool-chip" title="前进到下一个相机 focus。">前进</button>
         <button id="projectionToggleBtn" class="tool-chip" title="在透视和无透视视图之间切换。">透视</button>
+        <span id="editorStatus" class="editor-status">Mode: Move</span>
         <button id="focusToggleBtn" class="tool-chip primary-tool" data-current="Focus: Maze" data-next="Focus: Bounds" title="在建筑区域中心和当前迷宫中心之间切换相机 focus。"></button>
       </header>
       <div id="viewerHost" class="viewer"></div>
@@ -199,9 +200,9 @@ app.innerHTML = `
           <button data-view="back" class="axis-y" title="Back view">-Y</button>
         </div>
       </div>
-      <div class="log-dock">
+      <div class="log-dock is-collapsed">
         <div class="log-head">
-          <button id="logToggleBtn" class="collapse-toggle log-toggle" title="收起生成日志内容。" aria-label="Toggle generation log" aria-expanded="true"></button>
+          <button id="logToggleBtn" class="collapse-toggle log-toggle" title="展开生成日志内容。" aria-label="Toggle generation log" aria-expanded="false"></button>
           <span>Generation Log</span>
         </div>
         <div id="logContent" class="log-content"></div>
@@ -225,6 +226,7 @@ const fitBoundsBtn = document.querySelector<HTMLButtonElement>("#fitBoundsBtn")!
 const historyBackBtn = document.querySelector<HTMLButtonElement>("#historyBackBtn")!;
 const historyForwardBtn = document.querySelector<HTMLButtonElement>("#historyForwardBtn")!;
 const projectionToggleBtn = document.querySelector<HTMLButtonElement>("#projectionToggleBtn")!;
+const editorStatus = document.querySelector<HTMLSpanElement>("#editorStatus")!;
 const focusToggleBtn = document.querySelector<HTMLButtonElement>("#focusToggleBtn")!;
 const viewAxis = document.querySelector<HTMLDivElement>(".view-axis")!;
 const collapseToggles = document.querySelectorAll<HTMLButtonElement>(".collapse-toggle[data-collapse-target]");
@@ -241,7 +243,10 @@ const viewer = new MazeViewer(viewerHost);
 let csvText = railConfigCsv;
 let currentLayout: MazeLayout = JSON.parse(sampleLayoutRaw) as MazeLayout;
 let focusMode: "maze" | "bounds" = "maze";
-let selectedRail: Parameters<NonNullable<typeof viewer.onHover>>[0] = null;
+let selectedRail: RailMeta | null = null;
+let selectedRailId: number | null = null;
+let editorMode: EditorMode = "move";
+let deleteMode = false;
 let seedInputTimer: number | undefined;
 
 function markLatin(text: string): string {
@@ -249,9 +254,9 @@ function markLatin(text: string): string {
   return escape(text).replace(/[A-Za-z0-9_.:/()+,-]+/g, (match) => `<span class="latin">${match}</span>`);
 }
 
-function renderRailDetail(rail: Parameters<NonNullable<typeof viewer.onHover>>[0]): void {
+function renderRailDetail(rail: RailMeta | null): void {
   if (!rail) {
-    detailContent.innerHTML = `<span class="muted">${markLatin("Hover a rail in the scene.")}</span>`;
+    detailContent.innerHTML = `<span class="muted">${markLatin(deleteMode ? "Delete mode: click a rail to delete it." : "Hover a rail in the scene.")}</span>`;
     return;
   }
   detailContent.innerHTML = `
@@ -272,8 +277,17 @@ viewer.onHover = (rail) => {
 };
 
 viewer.onSelect = (rail) => {
+  if (deleteMode && rail) {
+    deleteRail(rail.id);
+    return;
+  }
   selectedRail = rail;
+  selectedRailId = rail?.id ?? null;
   renderRailDetail(selectedRail);
+};
+
+viewer.onEdit = (action) => {
+  applyRailEdit(action);
 };
 
 function readGeneratorStateFromControls(random = Number(createRandomSeed())): GeneratorSeedState {
@@ -309,6 +323,7 @@ function generateLayout(state: GeneratorSeedState): void {
       bounds: new Vector3(state.bounds.x, state.bounds.y, state.bounds.z),
     });
     currentLayout = generator.generate();
+    currentLayout.MapMeta.Seed = encodeSeedState(state);
     setLayout(currentLayout);
     renderLog(generator.logs);
   } catch (error) {
@@ -332,12 +347,14 @@ function regenerateWithCurrentConfig(): void {
   generateLayout(state);
 }
 
-function setLayout(layout: MazeLayout): void {
+function setLayout(layout: MazeLayout, keepSelectedId: number | null = null): void {
   currentLayout = layout;
-  selectedRail = null;
-  renderRailDetail(null);
+  selectedRailId = keepSelectedId !== null && layout.Rail.some((rail) => rail.Rail_Index === keepSelectedId) ? keepSelectedId : null;
+  selectedRail = selectedRailId !== null ? railMetaFromLayout(layout, selectedRailId) : null;
   viewer.setBounds(currentBounds());
-  viewer.setLayout(layout);
+  viewer.setLayout(layout, selectedRailId, keepSelectedId === null);
+  renderRailDetail(selectedRail);
+  updateEditorStatus();
   statsContent.innerHTML = `
     <div><span>${markLatin("Rails")}</span><strong>${markLatin(String(layout.MapMeta.RailCount))}</strong></div>
     <div><span>${markLatin("Difficulty")}</span><strong>${markLatin(layout.MapMeta.MazeDiff.toFixed(2))}</strong></div>
@@ -351,6 +368,33 @@ function setLayout(layout: MazeLayout): void {
   `;
 }
 
+function railMetaFromLayout(layout: MazeLayout, railId: number): RailMeta | null {
+  const rail = layout.Rail.find((item) => item.Rail_Index === railId);
+  if (!rail) return null;
+  return {
+    id: rail.Rail_Index,
+    type: rail.Rail_ID,
+    pos: rail.Pos_Abs,
+    posRev: rail.Pos_Rev,
+    rot: rail.Rot_Abs,
+    diff: rail.Diff_Act,
+    cumulativeDiff: rail.Diff_Act,
+    segmentDiff: rail.Diff_Act,
+  };
+}
+
+function restoreSeedFromLayout(layout: MazeLayout): string | null {
+  const meta = layout.MapMeta as MazeLayout["MapMeta"] & { seed?: unknown };
+  const topLevel = layout as MazeLayout & { seed?: unknown };
+  const seed = meta.Seed ?? meta.seed ?? topLevel.seed;
+  if (typeof seed !== "string") return null;
+  const state = parseSeedState(seed);
+  if (!state) return null;
+  seedInput.value = encodeSeedState(state);
+  applySeedState(state);
+  return seedInput.value;
+}
+
 function cloneLayout(layout: MazeLayout): MazeLayout {
   return JSON.parse(JSON.stringify(layout)) as MazeLayout;
 }
@@ -362,6 +406,54 @@ function worldDict(vec: Vec3Dict): Vec3Dict {
     z: Number((vec.z * GRID_TO_WORLD_SCALE).toFixed(8)),
   };
 }
+
+function vectorFromDict(vec: Vec3Dict): Vector3 {
+  return new Vector3(vec.x, vec.y, vec.z);
+}
+
+function normalizeRot(rot: RotAbs): RotAbs {
+  const normalize = (value: number | undefined) => (((Math.round((value ?? 0) / 90) * 90) % 360) + 360) % 360;
+  return { p: normalize(rot.p), y: normalize(rot.y), r: normalize(rot.r) };
+}
+
+function updateLayoutMeta(layout: MazeLayout): MazeLayout {
+  layout.MapMeta.RailCount = layout.Rail.length;
+  layout.MapMeta.MazeDiff = layout.Rail.reduce((sum, rail) => sum + rail.Diff_Act, 0);
+  layout.MapMeta.CheckpointCount = layout.Rail.filter((rail) => rail.Rail_ID.toLowerCase().includes("checkpoint")).length;
+  return layout;
+}
+
+function recalculateRailGeometry(rail: MazeRailJson): MazeRailJson {
+  const config = loadConfigFromCsv(csvText).get(rail.Rail_ID);
+  if (!config) return rail;
+  const posRev = vectorFromDict(rail.Pos_Rev);
+  const rotAbs = normalizeRot(rail.Rot_Abs);
+  const occupiedCells = calculateOccupiedCellsWithRotAbs(rail.Rail_ID, posRev, vectorFromDict(rail.Size_Rev), rotAbs)
+    .map(([x, y, z]) => ({ x, y, z }));
+  const previousExits = rail.Exit;
+  const exits = config.exitsLogic.map((exit, index) => {
+    const worldLogicPos = posRev.add(transformByRotAbs(exit.Pos, rotAbs));
+    const previous = previousExits[index];
+    return {
+      Index: index,
+      Exit_Pos_Rev: worldLogicPos.toDict(),
+      Exit_Pos_Abs: worldDict(worldLogicPos.toDict()),
+      Exit_Rot_Abs: composeRotAbs(rotAbs, exit.LocalRot),
+      Exit_Dir_Abs: exitDirFromLocalRot(rotAbs, exit.LocalRot),
+      SpinDiff: [...exit.SpinDiff],
+      IsConnected: previous?.IsConnected ?? false,
+      TargetInstanceID: previous?.TargetInstanceID ?? -1,
+    };
+  });
+  return {
+    ...rail,
+    Pos_Abs: worldDict(rail.Pos_Rev),
+    Rot_Abs: rotAbs,
+    Occupied_Cells_Rev: occupiedCells,
+    Exit: exits,
+  };
+}
+
 
 function layoutBounds(layout: MazeLayout): { min: Vec3Dict; max: Vec3Dict } {
   const cells = layout.Rail.flatMap((rail) => (rail.Occupied_Cells_Rev.length > 0 ? rail.Occupied_Cells_Rev : [rail.Pos_Rev]));
@@ -446,6 +538,115 @@ function fitLayoutBounds(): void {
   renderLog([{ kind: "info", message: `Fitted bounds to ${fitted.x}/${fitted.y}/${fitted.z} and centered by (${offset.x}, ${offset.y}, ${offset.z}).` }]);
 }
 
+function deleteRail(railId: number): void {
+  const target = currentLayout.Rail.find((rail) => rail.Rail_Index === railId);
+  if (!target) return;
+  const next = cloneLayout(currentLayout);
+  next.Rail = next.Rail
+    .filter((rail) => rail.Rail_Index !== railId)
+    .map((rail) => ({
+      ...rail,
+      Prev_Index: rail.Prev_Index === railId ? -1 : rail.Prev_Index,
+      Next_Index: rail.Next_Index.filter((index) => index !== railId),
+      Exit: rail.Exit.map((exit) => exit.TargetInstanceID === railId
+        ? { ...exit, IsConnected: false, TargetInstanceID: -1 }
+        : exit),
+    }));
+  updateLayoutMeta(next);
+  selectedRail = null;
+  selectedRailId = null;
+  setLayout(next);
+  renderLog([{ kind: "warn", message: `Deleted rail ${railId} (${target.Rail_ID}).` }]);
+}
+
+function applyRailEdit(action: RailEditAction): void {
+  if (action.mode === "move") {
+    moveRail(action.railId, axisOffset(action.axis, action.sign, action.amount ?? 1));
+  } else {
+    rotateRail(action.railId, action.axis, action.sign);
+  }
+}
+
+function axisOffset(axis: RailEditAction["axis"], sign: 1 | -1, amount: number): Vec3Dict {
+  const step = sign * Math.max(1, Math.floor(amount));
+  return {
+    x: axis === "x" ? step : 0,
+    y: axis === "y" ? step : 0,
+    z: axis === "z" ? step : 0,
+  };
+}
+
+function moveRail(railId: number, offset: Vec3Dict): void {
+  const next = cloneLayout(currentLayout);
+  const rail = next.Rail.find((item) => item.Rail_Index === railId);
+  if (!rail) return;
+  rail.Pos_Rev = { x: rail.Pos_Rev.x + offset.x, y: rail.Pos_Rev.y + offset.y, z: rail.Pos_Rev.z + offset.z };
+  Object.assign(rail, recalculateRailGeometry(rail));
+  updateLayoutMeta(next);
+  setLayout(next, railId);
+  renderLog([{ kind: "info", message: `Moved rail ${railId} by (${offset.x}, ${offset.y}, ${offset.z}).` }]);
+}
+
+function rotateRail(railId: number, axis: RailEditAction["axis"], sign: 1 | -1): void {
+  const next = cloneLayout(currentLayout);
+  const rail = next.Rail.find((item) => item.Rail_Index === railId);
+  if (!rail) return;
+  const delta = sign * 90;
+  rail.Rot_Abs = normalizeRot({
+    p: rail.Rot_Abs.p + (axis === "y" ? delta : 0),
+    y: rail.Rot_Abs.y + (axis === "z" ? delta : 0),
+    r: rail.Rot_Abs.r + (axis === "x" ? delta : 0),
+  });
+  Object.assign(rail, recalculateRailGeometry(rail));
+  updateLayoutMeta(next);
+  setLayout(next, railId);
+  renderLog([{ kind: "info", message: `Rotated rail ${railId} ${axis.toUpperCase()}${sign > 0 ? "+" : "-"}90.` }]);
+}
+
+function toggleEditorMode(): void {
+  editorMode = editorMode === "move" ? "rotate" : "move";
+  viewer.setEditorMode(editorMode);
+  renderRailDetail(selectedRail);
+  updateEditorStatus();
+  renderLog([{ kind: "info", message: `Editor mode: ${editorMode}.` }]);
+}
+
+function toggleDeleteMode(): void {
+  deleteMode = !deleteMode;
+  if (deleteMode) {
+    selectedRail = null;
+    selectedRailId = null;
+    viewer.selectRail(null);
+  }
+  renderRailDetail(selectedRail);
+  updateEditorStatus();
+  renderLog([{ kind: "warn", message: `Delete mode ${deleteMode ? "enabled" : "disabled"}.` }]);
+}
+
+function updateEditorStatus(): void {
+  const mode = deleteMode ? "Delete" : editorMode === "move" ? "Move" : "Rotate";
+  const target = selectedRailId === null ? "No selection" : `Rail ${selectedRailId}`;
+  editorStatus.textContent = `Mode: ${mode} · ${target}`;
+  editorStatus.classList.toggle("is-delete", deleteMode);
+  editorStatus.classList.toggle("is-rotate", !deleteMode && editorMode === "rotate");
+}
+
+function handleEditorKeydown(event: KeyboardEvent): void {
+  const target = event.target as HTMLElement | null;
+  if (target?.closest("input, textarea, select, button")) return;
+  if (event.key.toLowerCase() === "x") {
+    event.preventDefault();
+    if (selectedRailId !== null) {
+      deleteRail(selectedRailId);
+    } else {
+      toggleDeleteMode();
+    }
+  } else if (event.code === "Space" && selectedRailId !== null) {
+    event.preventDefault();
+    toggleEditorMode();
+  }
+}
+
 function renderLog(logs: { kind: string; message: string }[]): void {
   logContent.innerHTML = logs
     .slice(-80)
@@ -523,8 +724,10 @@ function handleFile(file: File): void {
   reader.onload = () => {
     const text = String(reader.result ?? "");
     if (file.name.toLowerCase().endsWith(".json")) {
-      setLayout(JSON.parse(text) as MazeLayout);
-      renderLog([{ kind: "info", message: `Loaded ${file.name}` }]);
+      const layout = JSON.parse(text) as MazeLayout;
+      const restoredSeed = restoreSeedFromLayout(layout);
+      setLayout(layout);
+      renderLog([{ kind: "info", message: restoredSeed ? `Loaded ${file.name}; restored seed ${restoredSeed}` : `Loaded ${file.name}` }]);
     } else {
       csvText = text;
       generateFromSeedInput();
@@ -569,6 +772,7 @@ focusToggleBtn.addEventListener("click", () => {
   updateFocusButton();
 });
 [boundX, boundY, boundZ].forEach((input) => input.addEventListener("input", refreshBoundsOnly));
+window.addEventListener("keydown", handleEditorKeydown);
 viewAxis.addEventListener("click", (event) => {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-view]");
   if (!button) return;
@@ -587,6 +791,7 @@ dropZone.addEventListener("drop", (event) => {
 });
 
 updateFocusButton();
+updateEditorStatus();
 generateFromSeedInput();
 gsap.from(".panel", { x: -20, opacity: 0, duration: 0.45, ease: "power3.out" });
 gsap.from(".log-dock", { y: 18, opacity: 0, duration: 0.45, delay: 0.12, ease: "power3.out" });
