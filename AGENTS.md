@@ -15,6 +15,7 @@ This file records repository-level rules for agents working in `ball-maze-tools`
 - Before starting each task, run `git pull`.
 - If `git pull` fails or reports a conflict, stop and tell the user before continuing.
 - After finishing a task successfully, commit and push the agent's changes.
+- Use a commit message that summarizes the actual updates made in that task; do not use a fixed or generic message by default.
 - If commit or push fails, stop and tell the user before continuing.
 - Do not include unrelated user changes in the commit unless the user explicitly asks for that.
 
