@@ -15,7 +15,7 @@ from mathutils.geometry import tessellate_polygon
 
 # 0 = merge：按 MERGE_LEVEL 合并体素块。
 # 1 = random：在随机尺寸范围内合并体素块。
-# 2 = separate：用轴向 box 对原始 mesh 做 Boolean Intersect 切割。
+# 2 = separate：直接按原始 mesh 面分区；空壳和已有内部贴图会按原样保留。
 SHATTER_MODE = 2
 
 # ============================================================
@@ -49,7 +49,6 @@ RANDOM_SEED = 12345
 # 奇数会先按奇数 + 1 分区，再随机合并一对相邻分区。
 SEPARATE_TARGET_BLOCKS = 64
 SEPARATE_RANDOM_SEED = 12345
-SEPARATE_BOOLEAN_SOLVER = "EXACT"
 
 # ============================================================
 # 基础参数
@@ -1226,6 +1225,32 @@ def separate_grid_shape(base_count, bounds_size):
 
     return best_shape
 
+def polygon_center(mesh, poly):
+    center = Vector((0.0, 0.0, 0.0))
+
+    for vertex_index in poly.vertices:
+        center += mesh.vertices[vertex_index].co
+
+    if len(poly.vertices) > 0:
+        center /= len(poly.vertices)
+
+    return center
+
+def separate_axis_index(value, min_value, max_value, parts):
+    if parts <= 1 or abs(max_value - min_value) < EPSILON:
+        return 0
+
+    ratio = (value - min_value) / (max_value - min_value)
+    index = int(ratio * parts)
+    return min(parts - 1, max(0, index))
+
+def separate_partition_index(center, min_co, max_co, grid_shape):
+    ix = separate_axis_index(center.x, min_co.x, max_co.x, grid_shape[0])
+    iy = separate_axis_index(center.y, min_co.y, max_co.y, grid_shape[1])
+    iz = separate_axis_index(center.z, min_co.z, max_co.z, grid_shape[2])
+
+    return ix + iy * grid_shape[0] + iz * grid_shape[0] * grid_shape[1]
+
 def adjacent_separate_pairs(grid_shape):
     pairs = []
     sx, sy, sz = grid_shape
@@ -1246,135 +1271,261 @@ def adjacent_separate_pairs(grid_shape):
 
     return pairs
 
-def axis_edges(min_value, max_value, parts):
-    if parts <= 1:
-        return [min_value, max_value]
+def merge_random_adjacent_partitions(partitions, target_count, grid_shape):
+    rng = random.Random(SEPARATE_RANDOM_SEED)
 
-    span = max_value - min_value
-    return [
-        min_value + span * i / parts
-        for i in range(parts + 1)
+    while len(partitions) > target_count:
+        available_indices = set(partitions.keys())
+        pairs = [
+            pair for pair in adjacent_separate_pairs(grid_shape)
+            if pair[0] in available_indices and pair[1] in available_indices
+        ]
+
+        if not pairs:
+            keys = sorted(partitions.keys())
+            if len(keys) < 2:
+                break
+            pairs = [(keys[i], keys[i + 1]) for i in range(len(keys) - 1)]
+
+        keep, remove = rng.choice(pairs)
+
+        if keep not in partitions or remove not in partitions:
+            continue
+
+        partitions[keep].extend(partitions[remove])
+        del partitions[remove]
+
+def split_separate_partition(mesh, poly_indices):
+    if len(poly_indices) <= 1:
+        return None
+
+    centers = [
+        (poly_index, polygon_center(mesh, mesh.polygons[poly_index]))
+        for poly_index in poly_indices
     ]
+    spreads = []
 
-def separate_box_specs(mesh):
+    for axis in range(3):
+        values = [center[axis] for _, center in centers]
+        spreads.append(max(values) - min(values))
+
+    split_axis = max(range(3), key=lambda axis: spreads[axis])
+
+    if spreads[split_axis] < EPSILON:
+        split_axis = max(
+            range(3),
+            key=lambda axis: len(set(round_f(center[axis]) for _, center in centers))
+        )
+
+    centers.sort(
+        key=lambda item: (
+            item[1][split_axis],
+            item[1][(split_axis + 1) % 3],
+            item[1][(split_axis + 2) % 3],
+            item[0],
+        )
+    )
+
+    split_at = len(centers) // 2
+
+    if split_at <= 0 or split_at >= len(centers):
+        return None
+
+    first = [poly_index for poly_index, _ in centers[:split_at]]
+    second = [poly_index for poly_index, _ in centers[split_at:]]
+
+    if not first or not second:
+        return None
+
+    return first, second
+
+def partition_split_score(mesh, poly_indices):
+    if len(poly_indices) <= 1:
+        return (0, 0.0)
+
+    centers = [
+        polygon_center(mesh, mesh.polygons[poly_index])
+        for poly_index in poly_indices
+    ]
+    spreads = []
+
+    for axis in range(3):
+        values = [center[axis] for center in centers]
+        spreads.append(max(values) - min(values))
+
+    return (len(poly_indices), max(spreads))
+
+def split_partitions_to_target(mesh, partitions, target_count):
+    next_index = max(partitions.keys(), default=-1) + 1
+
+    while len(partitions) < target_count:
+        splittable = [
+            (index, poly_indices)
+            for index, poly_indices in partitions.items()
+            if len(poly_indices) > 1
+        ]
+
+        if not splittable:
+            break
+
+        index, poly_indices = max(
+            splittable,
+            key=lambda item: partition_split_score(mesh, item[1])
+        )
+        split = split_separate_partition(mesh, poly_indices)
+
+        if split is None:
+            break
+
+        first, second = split
+        partitions[index] = first
+        partitions[next_index] = second
+        next_index += 1
+
+def build_separate_partitions(mesh):
     target_count = max(1, int(SEPARATE_TARGET_BLOCKS))
     base_count = separate_base_count(target_count)
     min_co, max_co = get_bounds(mesh)
     grid_shape = separate_grid_shape(base_count, max_co - min_co)
-    xs = axis_edges(min_co.x, max_co.x, grid_shape[0])
-    ys = axis_edges(min_co.y, max_co.y, grid_shape[1])
-    zs = axis_edges(min_co.z, max_co.z, grid_shape[2])
-    cells = {}
+    partitions = {i: [] for i in range(base_count)}
 
-    for iz in range(grid_shape[2]):
-        for iy in range(grid_shape[1]):
-            for ix in range(grid_shape[0]):
-                index = ix + iy * grid_shape[0] + iz * grid_shape[0] * grid_shape[1]
-                cells[index] = (
-                    Vector((xs[ix], ys[iy], zs[iz])),
-                    Vector((xs[ix + 1], ys[iy + 1], zs[iz + 1])),
-                )
+    for poly in mesh.polygons:
+        center = polygon_center(mesh, poly)
+        index = separate_partition_index(
+            center,
+            min_co,
+            max_co,
+            grid_shape,
+        )
+        partitions[index].append(poly.index)
 
-    if target_count % 2 == 1 and len(cells) > target_count:
-        rng = random.Random(SEPARATE_RANDOM_SEED)
-        pair = rng.choice(adjacent_separate_pairs(grid_shape))
-        first, second = pair
+    partitions = {
+        index: poly_indices
+        for index, poly_indices in partitions.items()
+        if poly_indices
+    }
 
-        if first in cells and second in cells:
-            min_a, max_a = cells[first]
-            min_b, max_b = cells[second]
-            cells[first] = (
-                Vector((
-                    min(min_a.x, min_b.x),
-                    min(min_a.y, min_b.y),
-                    min(min_a.z, min_b.z),
-                )),
-                Vector((
-                    max(max_a.x, max_b.x),
-                    max(max_a.y, max_b.y),
-                    max(max_a.z, max_b.z),
-                )),
-            )
-            del cells[second]
+    if target_count % 2 == 1 and len(partitions) > target_count:
+        merge_random_adjacent_partitions(
+            partitions,
+            target_count,
+            grid_shape,
+        )
 
-    specs = [
-        (index, bounds[0], bounds[1])
-        for index, bounds in sorted(cells.items(), key=lambda item: item[0])
+    if len(partitions) < target_count:
+        split_partitions_to_target(mesh, partitions, target_count)
+
+    result = [
+        tuple(poly_indices)
+        for _, poly_indices in sorted(partitions.items(), key=lambda item: item[0])
     ]
 
     print(
-        f"Separate boolean boxes: {len(specs)} "
+        f"Separate partitions: {len(result)} "
         f"(target {target_count}, grid {grid_shape[0]}x{grid_shape[1]}x{grid_shape[2]})"
     )
-    return specs
+    return result
 
-def make_box_mesh(name, min_co, max_co):
-    verts = [
-        (min_co.x, min_co.y, min_co.z),
-        (max_co.x, min_co.y, min_co.z),
-        (max_co.x, max_co.y, min_co.z),
-        (min_co.x, max_co.y, min_co.z),
-        (min_co.x, min_co.y, max_co.z),
-        (max_co.x, min_co.y, max_co.z),
-        (max_co.x, max_co.y, max_co.z),
-        (min_co.x, max_co.y, max_co.z),
-    ]
-    faces = [
-        (0, 3, 2, 1),
-        (4, 5, 6, 7),
-        (0, 1, 5, 4),
-        (1, 2, 6, 5),
-        (2, 3, 7, 6),
-        (3, 0, 4, 7),
-    ]
+def make_separate_mesh(name, source_mesh, poly_indices):
+    vertex_map = {}
+    old_vertex_by_new = []
+    verts = []
+    faces = []
+    source_loops_by_new_poly = []
+    source_poly_by_new_poly = []
+
+    def mapped_vertex(old_index):
+        if old_index in vertex_map:
+            return vertex_map[old_index]
+
+        new_index = len(verts)
+        vertex_map[old_index] = new_index
+        old_vertex_by_new.append(old_index)
+        verts.append(source_mesh.vertices[old_index].co.copy())
+        return new_index
+
+    for poly_index in poly_indices:
+        poly = source_mesh.polygons[poly_index]
+        faces.append([mapped_vertex(vertex_index) for vertex_index in poly.vertices])
+        source_loops_by_new_poly.append(tuple(poly.loop_indices))
+        source_poly_by_new_poly.append(poly_index)
+
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata(verts, [], faces)
     mesh.update()
-    return mesh
 
-def apply_boolean_intersect(piece_obj, cutter_obj):
-    modifier = piece_obj.modifiers.new("separate_intersect", "BOOLEAN")
-    modifier.operation = "INTERSECT"
-    modifier.object = cutter_obj
+    for mat in source_mesh.materials:
+        mesh.materials.append(mat)
+
+    for src_uv_layer in source_mesh.uv_layers:
+        mesh.uv_layers.new(name=src_uv_layer.name)
+
+    for src_attr in source_mesh.color_attributes:
+        try:
+            mesh.color_attributes.new(
+                name=src_attr.name,
+                type=src_attr.data_type,
+                domain=src_attr.domain
+            )
+        except RuntimeError:
+            pass
+
+    for new_poly_index, poly in enumerate(mesh.polygons):
+        src_poly = source_mesh.polygons[source_poly_by_new_poly[new_poly_index]]
+        src_loop_indices = source_loops_by_new_poly[new_poly_index]
+        poly.material_index = min(src_poly.material_index, max(0, len(mesh.materials) - 1))
+
+        for corner_index, loop_index in enumerate(poly.loop_indices):
+            src_loop_index = src_loop_indices[corner_index]
+
+            for layer_index, uv_layer in enumerate(mesh.uv_layers):
+                uv_layer.data[loop_index].uv = source_mesh.uv_layers[layer_index].data[src_loop_index].uv
+
+    for color_attr in mesh.color_attributes:
+        src_attr = source_mesh.color_attributes.get(color_attr.name)
+
+        if src_attr is None:
+            continue
+
+        if color_attr.domain == "CORNER":
+            for new_poly_index, poly in enumerate(mesh.polygons):
+                src_loop_indices = source_loops_by_new_poly[new_poly_index]
+                for corner_index, loop_index in enumerate(poly.loop_indices):
+                    src_loop_index = src_loop_indices[corner_index]
+                    color_attr.data[loop_index].color = src_attr.data[src_loop_index].color
+
+        elif color_attr.domain == "POINT":
+            for new_vertex_index, old_vertex_index in enumerate(old_vertex_by_new):
+                color_attr.data[new_vertex_index].color = src_attr.data[old_vertex_index].color
+
+        elif color_attr.domain == "FACE":
+            for new_poly_index, src_poly_index in enumerate(source_poly_by_new_poly):
+                color_attr.data[new_poly_index].color = src_attr.data[src_poly_index].color
 
     try:
-        modifier.solver = SEPARATE_BOOLEAN_SOLVER
+        if source_mesh.color_attributes.active_color:
+            active_name = source_mesh.color_attributes.active_color.name
+            for i, attr in enumerate(mesh.color_attributes):
+                if attr.name == active_name:
+                    mesh.color_attributes.active_color_index = i
+                    break
     except Exception:
         pass
 
-    bpy.ops.object.select_all(action="DESELECT")
-    piece_obj.select_set(True)
-    bpy.context.view_layer.objects.active = piece_obj
-    bpy.ops.object.modifier_apply(modifier=modifier.name)
-    piece_obj.data.update()
-
-def make_boolean_separate_object(name, source_mesh, source_matrix_world, min_co, max_co, output_collection):
-    piece_mesh = source_mesh.copy()
-    piece_obj = bpy.data.objects.new(name, piece_mesh)
-    piece_obj.matrix_world = rounded_matrix(source_matrix_world)
-    output_collection.objects.link(piece_obj)
-
-    cutter_mesh = make_box_mesh(f"{name}_cutter_mesh", min_co, max_co)
-    cutter_obj = bpy.data.objects.new(f"{name}_cutter", cutter_mesh)
-    cutter_obj.matrix_world = rounded_matrix(source_matrix_world)
-    output_collection.objects.link(cutter_obj)
-
     try:
-        apply_boolean_intersect(piece_obj, cutter_obj)
+        if source_mesh.color_attributes.render_color_index >= 0:
+            src_render_attr = source_mesh.color_attributes[
+                source_mesh.color_attributes.render_color_index
+            ]
+            for i, attr in enumerate(mesh.color_attributes):
+                if attr.name == src_render_attr.name:
+                    mesh.color_attributes.render_color_index = i
+                    break
     except Exception:
-        bpy.data.objects.remove(piece_obj, do_unlink=True)
-        bpy.data.objects.remove(cutter_obj, do_unlink=True)
-        bpy.data.meshes.remove(cutter_mesh)
-        raise
+        pass
 
-    bpy.data.objects.remove(cutter_obj, do_unlink=True)
-    bpy.data.meshes.remove(cutter_mesh)
-
-    if len(piece_obj.data.vertices) == 0 or len(piece_obj.data.polygons) == 0:
-        bpy.data.objects.remove(piece_obj, do_unlink=True)
-        return None
-
-    return piece_obj
+    mesh.update()
+    return mesh
 
 # ============================================================
 # Mesh 获取
@@ -1408,34 +1559,34 @@ def shatter_object(obj):
         return
 
     if SHATTER_MODE == 2:
-        box_specs = separate_box_specs(source_mesh)
+        partitions = build_separate_partitions(source_mesh)
 
-        if len(box_specs) > MAX_OUTPUT_CUBES_PER_OBJECT:
+        if len(partitions) > MAX_OUTPUT_CUBES_PER_OBJECT:
             raise RuntimeError(
-                f"{obj.name} would generate {len(box_specs)} blocks, "
+                f"{obj.name} would generate {len(partitions)} blocks, "
                 f"which exceeds MAX_OUTPUT_CUBES_PER_OBJECT."
             )
 
         output_collection = create_output_collection_for_object(obj)
-        created_count = 0
 
-        for i, (_, min_co, max_co) in enumerate(box_specs):
-            piece_obj = make_boolean_separate_object(
-                name=f"{obj.name}_separate_{i:05d}",
+        for i, poly_indices in enumerate(partitions):
+            block_mesh = make_separate_mesh(
+                name=f"{obj.name}_separate_{i:05d}_mesh",
                 source_mesh=source_mesh,
-                source_matrix_world=source_matrix_world,
-                min_co=min_co,
-                max_co=max_co,
-                output_collection=output_collection,
+                poly_indices=poly_indices,
             )
 
-            if piece_obj is not None:
-                created_count += 1
+            block_obj = bpy.data.objects.new(
+                f"{obj.name}_separate_{i:05d}",
+                block_mesh
+            )
+
+            output_collection.objects.link(block_obj)
+            block_obj.matrix_world = rounded_matrix(source_matrix_world)
 
         if USE_EVALUATED_MESH:
             bpy.data.meshes.remove(source_mesh)
 
-        print(f"Separate boolean objects: {created_count}")
         print(f"Done: {obj.name}")
         return
 

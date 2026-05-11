@@ -11,7 +11,7 @@ Blender Python script for converting selected mesh objects into voxel cube colle
 - Can fill the volume with scanlines, then keep only the outer layer.
 - Can merge unit voxels into larger non-overlapping cuboid blocks.
 - Can randomize merged block sizes within a configured size range.
-- Can split the original mesh into separate objects with axis-aligned Boolean cuts.
+- Can split the original mesh into separate objects without filling hollow assets.
 - Can use the evaluated mesh after modifiers.
 - Preserves material slots, UV layers, and mesh Color Attributes / vertex colors used by material nodes.
 - Creates the shattered collection under the source object's collection.
@@ -51,7 +51,6 @@ This script cannot run in normal system Python because it imports `bpy` and Blen
 - `RANDOM_SEED`: makes randomized merging repeatable.
 - `SEPARATE_TARGET_BLOCKS`: target number of pieces for `separate` mode. The script decomposes this into a near-cubic 3D grid.
 - `SEPARATE_RANDOM_SEED`: controls which adjacent pair is merged when `SEPARATE_TARGET_BLOCKS` is odd.
-- `SEPARATE_BOOLEAN_SOLVER`: Blender Boolean solver used by `separate` mode. `EXACT` is safer; `FAST` may be quicker on simple meshes.
 - `AXIS_NORMAL_THRESHOLD`: ignores faces that are not close to axis-aligned.
 
 ## Notes
@@ -67,7 +66,7 @@ Merge priority is:
 3. full occupancy arbitrary connected shape within target size,
 4. downgrade target side length until `1x1x1`.
 
-Separate mode does not voxelize or scanline-fill the asset. It builds a near-cubic grid of axis-aligned cutter boxes and runs Boolean Intersect between each box and the source mesh. Closed solid meshes get real cut faces instead of open shells. Hollow meshes with actual wall thickness keep their cavities, and existing internal faces/textures are preserved where they exist in the source mesh.
+Separate mode does not voxelize or fill the asset. It assigns each original polygon to one axis-aligned bounding-box grid partition by polygon center, then creates one mesh object per partition using the original polygon vertices, material indices, UVs, and Color Attributes. Hollow assets stay hollow, and any existing internal faces or internal textures are copied from the source mesh instead of being reconstructed.
 
 Separate partitioning uses this layout:
 
@@ -76,4 +75,4 @@ Separate partitioning uses this layout:
 3. Assign larger factors to longer object axes, so elongated objects still get less stretched cells.
 4. Examples for near-cubic assets: `2 -> 2x1x1`, `4 -> 2x2x1`, `6 -> 3x2x1`, `8 -> 2x2x2`, `9 -> 3x3x1`, `64 -> 4x4x4`.
 5. Odd targets build the next even layout, then merge one random adjacent pair.
-6. Empty intersections are skipped, so meshes that do not occupy some grid cells may output fewer objects than the requested count.
+6. If curved assets leave empty bounding-box cells, the largest populated surface partitions are split again until the target object count is reached when possible.
