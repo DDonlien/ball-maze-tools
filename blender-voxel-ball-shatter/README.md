@@ -10,7 +10,8 @@ Blender Python script for converting selected mesh objects into voxel cube colle
 - Reconstructs voxel occupancy from axis-aligned source faces.
 - Can fill the volume with scanlines, then keep only the outer layer.
 - Can merge unit voxels into larger non-overlapping cuboid blocks.
-- Can randomize merged block sizes while trying to stay under a target output block count.
+- Can randomize merged block sizes within a configured size range.
+- Can split the original mesh into separate objects without creating new cut faces.
 - Can use the evaluated mesh after modifiers.
 - Preserves material slots, UV layers, and mesh Color Attributes / vertex colors used by material nodes.
 - Creates the shattered collection under the source object's collection.
@@ -34,6 +35,7 @@ This script cannot run in normal system Python because it imports `bpy` and Blen
 
 ## Key Config
 
+- `SHATTER_MODE`: processing mode. `0 = merge`, `1 = random`, `2 = separate`.
 - `VOXEL_SIZE`: size of one voxel cube. The current default is `0.1`.
 - `GRID_SNAP_STEP`: boundary snap precision. For `0.1` voxels, `0.05` is usually correct; use `0.0125` if the source asset has that offset.
 - `FILL_VOLUME_BY_SCANLINE`: fills the voxel volume before extracting the outer layer.
@@ -43,24 +45,33 @@ This script cannot run in normal system Python because it imports `bpy` and Blen
 - `REPLACE_EXISTING_COLLECTION`: replaces an existing `<object>_shattered` collection when rerunning.
 - `LINK_TO_ALL_SOURCE_COLLECTIONS`: links the output collection under every source collection when `True`.
 - `MAX_OUTPUT_CUBES_PER_OBJECT`: safety limit for generated cube count.
-- `MERGE_LEVEL`: merge strength. `1` keeps unit voxels, `2` allows two-voxel bars, `3` allows `2x2x2` blocks, higher values allow larger blocks.
-- `RANDOMIZE_MERGE`: enables random merged block sizes.
-- `RANDOM_OUTPUT_BLOCK_LIMIT`: target maximum number of output block objects when random merge is enabled.
-- `RANDOM_SEARCH_MAX_MERGE_LEVEL`: upper search bound for automatic random merge sizing.
+- `MERGE_LEVEL`: target merge side length. `1` keeps unit voxels, `2` targets `2x2x2` / volume `8`, `3` targets `3x3x3` / volume `27`, and so on.
+- `RANDOM_MERGE_LEVEL_MIN`: lower bound of random target side length.
+- `RANDOM_MERGE_LEVEL_MAX`: upper bound of random target side length.
 - `RANDOM_SEED`: makes randomized merging repeatable.
-- `RANDOM_VOLUME_BIAS`: higher values favor larger random blocks.
-- `RANDOM_ATTEMPTS`: retry count when trying to stay below `RANDOM_OUTPUT_BLOCK_LIMIT`.
-- `RANDOM_MAX_MERGE_SIDE`: hard cap for random block side length. Lower values are much safer in Blender's main thread.
-- `RANDOM_MAX_CANDIDATE_SHAPES`: limits how many merge shapes are tested per random run.
-- `RANDOM_MAX_BLOCKS_PER_SEED`: limits accepted candidate blocks per seed voxel.
-- `RANDOM_MAX_ORIGINS_PER_SHAPE`: limits random origin checks for each shape.
-- `RANDOM_EFFECTIVE_ATTEMPTS_CAP`: safety cap on actual random merge passes, even if `RANDOM_ATTEMPTS` is higher.
-- `RANDOM_MAX_SEEDS_TO_SEARCH`: safety cap before remaining voxels fall back to `1x1x1`.
-- `PREFER_CUBE_LIKE_BLOCKS`: prioritizes cubes and near-cubes over long bars.
+- `SEPARATE_TARGET_BLOCKS`: target number of pieces for `separate` mode.
+- `SEPARATE_RANDOM_SEED`: controls which adjacent pair is merged when `SEPARATE_TARGET_BLOCKS` is odd.
 - `AXIS_NORMAL_THRESHOLD`: ignores faces that are not close to axis-aligned.
 
 ## Notes
 
 The script assumes voxel-style geometry with mostly axis-aligned faces. If a material reads Color Attributes such as `Color`, `Metallic`, `Roughness`, `Emission`, or similar, the generated block meshes create matching CORNER-domain Color Attributes and sample values from the source faces.
 
-Merged blocks are single Blender objects, but their exterior faces remain subdivided on the source voxel grid so material slots, UVs, and Color Attributes can still be sampled per small face.
+Merged blocks are single Blender objects, and may be cubes, cuboids, or connected arbitrary voxel shapes such as L-shapes. Their exterior faces remain subdivided on the source voxel grid so material slots, UVs, and Color Attributes can still be sampled per small face.
+
+Merge priority is:
+
+1. full occupancy cube at target volume,
+2. surface-only arbitrary connected shape within target size,
+3. full occupancy arbitrary connected shape within target size,
+4. downgrade target side length until `1x1x1`.
+
+Separate mode does not voxelize the asset. It assigns each original polygon to one spatial partition by polygon center, then creates one mesh object per partition using the original polygon vertices, material indices, UVs, and Color Attributes. Because it does not boolean-cut geometry, the split boundary stays open and no new cap faces are generated.
+
+Separate partitioning uses this layout:
+
+1. `2`: two vertical sectors.
+2. `4`: two vertical sectors and two horizontal layers.
+3. `6`: three vertical sectors and two horizontal layers.
+4. `8`: four vertical sectors and two horizontal layers.
+5. odd targets: build the next even layout, then merge one random adjacent pair.

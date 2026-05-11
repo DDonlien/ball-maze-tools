@@ -13,6 +13,12 @@ from mathutils.geometry import tessellate_polygon
 # 用户配置区
 # ============================================================
 
+# 运行模式：
+# 0 = merge：按 MERGE_LEVEL 合并体素块。
+# 1 = random：在随机尺寸范围内合并体素块。
+# 2 = separate：不体素化，不切新面，只沿原有顶点/面把原资产分成若干块。
+SHATTER_MODE = 2
+
 # 你的单个体素块尺寸
 VOXEL_SIZE = 0.1
 
@@ -51,32 +57,29 @@ LINK_TO_ALL_SOURCE_COLLECTIONS = False
 # 防止误生成过多对象
 MAX_OUTPUT_CUBES_PER_OBJECT = 100000
 
-# 合并等级：
+# merge 模式参数：合并等级。
 # 1 = 当前行为，每个体素都是 1x1x1 小块。
-# 2 = 允许 1x1x2 这类两格长方体。
-# 3 = 允许 2x2x2 这类小立方体。
-# 4、5... 会继续放大允许的最大合并边长。
+# 2 = 目标尺寸 2x2x2，目标体积 8。
+# 3 = 目标尺寸 3x3x3，目标体积 27。
+# 4、5... 以此类推。
 # 如果局部空间无法合并到目标大小，会自动降级到更小块，直到 1x1x1。
 MERGE_LEVEL = 1
 
-# 随机合并。开启后，脚本会根据 RANDOM_OUTPUT_BLOCK_LIMIT 自动估计一个合并上限，
-# 然后在 1 到该上限之间逐块随机选择尺寸；无法放置时同样会降级。
-RANDOMIZE_MERGE = True
-RANDOM_OUTPUT_BLOCK_LIMIT = 100
-RANDOM_SEARCH_MAX_MERGE_LEVEL = 6
+# random 模式参数：脚本会在 RANDOM_MERGE_LEVEL_MIN 到
+# RANDOM_MERGE_LEVEL_MAX 对应的尺寸范围内逐块随机选择块大小。
+# 这不是最终块数上限；最终数量由模型形状和可合并空间自然决定。
+RANDOM_MERGE_LEVEL_MIN = 3
+RANDOM_MERGE_LEVEL_MAX = 5
 RANDOM_SEED = 12345
-RANDOM_VOLUME_BIAS = 2.0
-RANDOM_ATTEMPTS = 8
-RANDOM_MAX_MERGE_SIDE = 4
-RANDOM_MAX_CANDIDATE_SHAPES = 24
-RANDOM_MAX_BLOCKS_PER_SEED = 12
-RANDOM_MAX_ORIGINS_PER_SHAPE = 6
-RANDOM_EFFECTIVE_ATTEMPTS_CAP = 2
-RANDOM_MAX_SEEDS_TO_SEARCH = 5000
 
-# 合并形状偏好。
-# True 会明显提高正方体 / 接近正方体的优先级；只有无法放下时才更容易退到长条。
-PREFER_CUBE_LIKE_BLOCKS = True
+# separate 模式参数：目标块数。
+# 2 = 竖向对开。
+# 4 = 2 个竖向分区 x 2 个横向分区。
+# 6 = 3 个竖向分区 x 2 个横向分区。
+# 8 = 4 个竖向分区 x 2 个横向分区。
+# 奇数会先按奇数 + 1 分区，再随机合并一对相邻分区。
+SEPARATE_TARGET_BLOCKS = 6
+SEPARATE_RANDOM_SEED = 12345
 
 # 位置/矩阵数值保留精度，避免 Blender 面板里出现长尾小数
 POSITION_DECIMALS = 6
@@ -695,95 +698,49 @@ def dims_balance_score(dims):
     dx, dy, dz = normalized_dims(dims)
     return (dx - dy) ** 2 + (dy - dz) ** 2 + (dz - dx) ** 2
 
-def merge_level_max_side(level):
-    level = max(1, int(level))
+def target_side_from_level(level):
+    return max(1, int(level))
 
-    if level <= 1:
-        return 1
+def block_bounds(cells):
+    xs = [key[0] for key in cells]
+    ys = [key[1] for key in cells]
+    zs = [key[2] for key in cells]
 
-    if level == 2:
-        return 2
-
-    return 2 ** (level - 2)
-
-def shape_sort_key(dims, cube_like=True):
-    dims = normalized_dims(dims)
-
-    if cube_like:
-        return (
-            0 if dims_is_cube(dims) else 1,
-            dims_balance_score(dims),
-            -dims_volume(dims),
-            max(dims),
-            dims_spread(dims),
-            dims,
-        )
-
-    return (-dims_volume(dims), max(dims), dims_spread(dims), dims[2], dims[1], dims[0])
-
-def limited_random_shape_candidates(candidates):
-    if len(candidates) <= RANDOM_MAX_CANDIDATE_SHAPES:
-        return candidates
-
-    cubes = [dims for dims in candidates if dims_is_cube(dims)]
-    balanced = sorted(
-        [dims for dims in candidates if not dims_is_cube(dims)],
-        key=lambda dims: (dims_balance_score(dims), -dims_volume(dims), max(dims), dims),
-    )
-    bars = sorted(
-        [dims for dims in candidates if dims_spread(dims) > 0],
-        key=lambda dims: (-dims_volume(dims), dims_spread(dims), max(dims), dims),
+    min_key = (min(xs), min(ys), min(zs))
+    max_key = (max(xs), max(ys), max(zs))
+    dims = (
+        max_key[0] - min_key[0] + 1,
+        max_key[1] - min_key[1] + 1,
+        max_key[2] - min_key[2] + 1,
     )
 
-    result = []
-    seen = set()
+    return min_key, max_key, dims
 
-    for group in (cubes, balanced, bars):
-        for dims in group:
-            if dims in seen:
-                continue
-            result.append(dims)
-            seen.add(dims)
-            if len(result) >= RANDOM_MAX_CANDIDATE_SHAPES:
-                return result
+def make_block_from_cells(cells, surface_keys, occupied_cells):
+    cells = tuple(sorted(set(cells), key=lambda key: (key[2], key[1], key[0])))
 
-    return result
+    if not cells:
+        return None
 
-def shape_candidates_for_level(level, randomize=False):
-    level = max(1, int(level))
+    if any(cell in occupied_cells for cell in cells):
+        return None
 
-    if level <= 1:
-        return [(1, 1, 1)]
+    surface_in_block = tuple(cell for cell in cells if cell in surface_keys)
 
-    if level == 2:
-        return [
-            (2, 1, 1),
-            (1, 2, 1),
-            (1, 1, 2),
-            (1, 1, 1),
-        ]
+    if not surface_in_block:
+        return None
 
-    max_side = merge_level_max_side(level)
+    min_key, max_key, dims = block_bounds(cells)
 
-    if randomize:
-        max_side = min(max_side, max(1, int(RANDOM_MAX_MERGE_SIDE)))
-
-    candidates = set()
-
-    for sx in range(1, max_side + 1):
-        for sy in range(1, max_side + 1):
-            for sz in range(1, max_side + 1):
-                candidates.add((sx, sy, sz))
-
-    candidates = sorted(
-        candidates,
-        key=lambda d: shape_sort_key(d, cube_like=PREFER_CUBE_LIKE_BLOCKS)
-    )
-
-    if randomize:
-        candidates = limited_random_shape_candidates(candidates)
-
-    return candidates
+    return {
+        "min_key": min_key,
+        "max_key": max_key,
+        "dims": normalized_dims(dims),
+        "cells": cells,
+        "surface_keys": surface_in_block,
+        "volume": len(cells),
+        "surface_count": len(surface_in_block),
+    }
 
 def cells_for_box(min_key, dims):
     dx, dy, dz = normalized_dims(dims)
@@ -809,136 +766,145 @@ def candidate_min_keys_containing(seed_key, dims):
                     seed_key[2] - oz,
                 )
 
-def candidate_min_keys_containing_limited(seed_key, dims, max_origins):
-    dx, dy, dz = normalized_dims(dims)
-    total_origins = dx * dy * dz
+def cube_block(seed_key, target_side, allowed_cells, surface_keys, occupied_cells):
+    dims = (target_side, target_side, target_side)
+    best = None
 
-    if max_origins is None or total_origins <= max_origins:
-        return list(candidate_min_keys_containing(seed_key, dims))
+    for min_key in candidate_min_keys_containing(seed_key, dims):
+        cells = tuple(cells_for_box(min_key, dims))
 
-    preferred = []
-    seen = set()
+        if all(cell in allowed_cells and cell not in occupied_cells for cell in cells):
+            block = make_block_from_cells(cells, surface_keys, occupied_cells)
 
-    def add_offset(ox, oy, oz):
-        ox = min(max(0, ox), dx - 1)
-        oy = min(max(0, oy), dy - 1)
-        oz = min(max(0, oz), dz - 1)
-        origin = (
-            seed_key[0] - ox,
-            seed_key[1] - oy,
-            seed_key[2] - oz,
-        )
+            if block is None:
+                continue
 
-        if origin not in seen:
-            preferred.append(origin)
-            seen.add(origin)
+            if best is None or block_sort_key(block) < block_sort_key(best):
+                best = block
 
-    for ox in (0, dx // 2, dx - 1):
-        for oy in (0, dy // 2, dy - 1):
-            for oz in (0, dz // 2, dz - 1):
-                add_offset(ox, oy, oz)
+    return best
 
-    while len(preferred) < max_origins:
-        add_offset(
-            random.randrange(dx),
-            random.randrange(dy),
-            random.randrange(dz),
-        )
+def neighbor_keys(key):
+    return [add_key(key, d) for d in get_outer_dirs()]
 
-    return preferred[:max_origins]
-
-def make_block_from_box(min_key, dims, full_occupancy, surface_keys, occupied_cells):
-    cells = tuple(cells_for_box(min_key, dims))
-
-    if any(cell not in full_occupancy or cell in occupied_cells for cell in cells):
+def collect_arbitrary_block(seed_key, allowed_cells, surface_keys, occupied_cells, target_side, target_volume):
+    if seed_key not in allowed_cells or seed_key in occupied_cells:
         return None
 
-    surface_in_block = tuple(cell for cell in cells if cell in surface_keys)
+    block_cells = {seed_key}
+    frontier = [seed_key]
 
-    if not surface_in_block:
-        return None
+    while frontier and len(block_cells) < target_volume:
+        current = frontier.pop(0)
+        neighbors = neighbor_keys(current)
+        random.shuffle(neighbors)
 
-    return {
-        "min_key": min_key,
-        "dims": normalized_dims(dims),
-        "cells": cells,
-        "surface_keys": surface_in_block,
-        "volume": len(cells),
-        "surface_count": len(surface_in_block),
-    }
-
-def valid_blocks_for_seed(seed_key, candidates, full_occupancy, surface_keys, occupied_cells, max_blocks=None):
-    blocks = []
-    max_origins = RANDOM_MAX_ORIGINS_PER_SHAPE if max_blocks is not None else None
-
-    for dims in candidates:
-        for min_key in candidate_min_keys_containing_limited(seed_key, dims, max_origins):
-            block = make_block_from_box(
-                min_key,
-                dims,
-                full_occupancy,
-                surface_keys,
-                occupied_cells,
+        neighbors.sort(
+            key=lambda key: (
+                0 if key in surface_keys else 1,
+                abs(key[0] - seed_key[0]) + abs(key[1] - seed_key[1]) + abs(key[2] - seed_key[2]),
             )
-
-            if block is not None:
-                blocks.append(block)
-
-                if max_blocks is not None and len(blocks) >= max_blocks:
-                    return sorted_valid_blocks(blocks)
-
-    return sorted_valid_blocks(blocks)
-
-def sorted_valid_blocks(blocks):
-    blocks.sort(
-        key=lambda block: (
-            1 if block["volume"] == 1 else 0,
-            dims_balance_score(block["dims"]) if PREFER_CUBE_LIKE_BLOCKS else 0,
-            0 if dims_is_cube(block["dims"]) else 1,
-            -block["surface_count"],
-            -block["volume"],
-            max(block["dims"]),
-            dims_spread(block["dims"]),
-            block["min_key"],
         )
-    )
-    return blocks
 
-def choose_weighted_random_block(blocks):
-    if not blocks:
+        for neighbor in neighbors:
+            if neighbor in block_cells:
+                continue
+            if neighbor not in allowed_cells or neighbor in occupied_cells:
+                continue
+
+            trial_cells = set(block_cells)
+            trial_cells.add(neighbor)
+            min_key, max_key, dims = block_bounds(trial_cells)
+
+            if max(dims) > target_side:
+                continue
+
+            block_cells.add(neighbor)
+            frontier.append(neighbor)
+
+            if len(block_cells) >= target_volume:
+                break
+
+    if len(block_cells) <= 1 and target_volume > 1:
         return None
 
-    weights = []
+    return make_block_from_cells(block_cells, surface_keys, occupied_cells)
 
-    for block in blocks:
-        weight = max(1.0, float(block["volume"]) ** RANDOM_VOLUME_BIAS)
+def block_sort_key(block):
+    return (
+        1 if block["volume"] == 1 else 0,
+        0 if dims_is_cube(block["dims"]) and block["volume"] == dims_volume(block["dims"]) else 1,
+        dims_balance_score(block["dims"]),
+        -block["surface_count"],
+        -block["volume"],
+        max(block["dims"]),
+        dims_spread(block["dims"]),
+        block["min_key"],
+    )
 
-        if PREFER_CUBE_LIKE_BLOCKS:
-            weight /= 1.0 + dims_balance_score(block["dims"])
-            if dims_is_cube(block["dims"]):
-                weight *= 2.5
+def try_priority_blocks(seed_key, target_side, full_occupancy, surface_keys, uncovered_surface, occupied_cells):
+    target_side = target_side_from_level(target_side)
+    target_volume = target_side ** 3
+    surface_available = set(uncovered_surface) - occupied_cells
+    full_available = set(full_occupancy) - occupied_cells
 
-        weights.append(weight)
+    # 1. 内+外表面体块，目标体积的正方体。
+    block = cube_block(
+        seed_key,
+        target_side,
+        full_available,
+        uncovered_surface,
+        occupied_cells,
+    )
+    if block is not None:
+        return block
 
-    return random.choices(blocks, weights=weights, k=1)[0]
+    # 2. 外表面体块，目标 size 的任意形状。
+    block = collect_arbitrary_block(
+        seed_key,
+        surface_available,
+        uncovered_surface,
+        occupied_cells,
+        target_side,
+        target_volume,
+    )
+    if block is not None:
+        return block
 
-def merge_surface_voxels(full_occupancy, surface_keys, merge_level, randomize=False):
-    candidates = shape_candidates_for_level(merge_level, randomize=randomize)
+    # 3. 内+外表面体块，目标 size 的任意形状。
+    block = collect_arbitrary_block(
+        seed_key,
+        full_available,
+        uncovered_surface,
+        occupied_cells,
+        target_side,
+        target_volume,
+    )
+    if block is not None:
+        return block
+
+    return None
+
+def choose_target_side(randomize):
+    if not randomize:
+        return target_side_from_level(MERGE_LEVEL)
+
+    min_level = target_side_from_level(RANDOM_MERGE_LEVEL_MIN)
+    max_level = target_side_from_level(RANDOM_MERGE_LEVEL_MAX)
+
+    if max_level < min_level:
+        min_level, max_level = max_level, min_level
+
+    return random.randint(min_level, max_level)
+
+def merge_surface_voxels(full_occupancy, surface_keys, randomize=False):
     uncovered_surface = set(surface_keys)
     occupied_cells = set()
     blocks = []
     sorted_surface_keys = sorted(surface_keys, key=lambda k: (k[2], k[1], k[0]))
     seed_index = 0
-    searched_seed_count = 0
 
     while uncovered_surface:
-        if randomize and searched_seed_count >= RANDOM_MAX_SEEDS_TO_SEARCH:
-            print(
-                f"Random merge search budget reached; "
-                f"falling back {len(uncovered_surface)} remaining voxels to 1x1x1."
-            )
-            break
-
         seed_key = None
 
         while seed_index < len(sorted_surface_keys):
@@ -952,149 +918,77 @@ def merge_surface_voxels(full_occupancy, surface_keys, merge_level, randomize=Fa
         if seed_key is None:
             break
 
-        searched_seed_count += 1
+        block = None
+        target_side = choose_target_side(randomize)
 
-        valid_blocks = valid_blocks_for_seed(
-            seed_key,
-            candidates,
-            full_occupancy,
-            uncovered_surface,
-            occupied_cells,
-            RANDOM_MAX_BLOCKS_PER_SEED if randomize else None,
-        )
-
-        if not valid_blocks:
-            valid_blocks = valid_blocks_for_seed(
+        for side in range(target_side, 0, -1):
+            block = try_priority_blocks(
                 seed_key,
-                [(1, 1, 1)],
+                side,
                 full_occupancy,
+                surface_keys,
                 uncovered_surface,
                 occupied_cells,
-                None,
             )
 
-        if not valid_blocks:
+            if block is not None:
+                break
+
+        if block is None:
+            block = make_block_from_cells([seed_key], uncovered_surface, occupied_cells)
+
+        if block is None:
             uncovered_surface.remove(seed_key)
             continue
 
-        block = choose_weighted_random_block(valid_blocks) if randomize else valid_blocks[0]
         blocks.append(block)
         occupied_cells.update(block["cells"])
         uncovered_surface.difference_update(block["surface_keys"])
 
-    for key in sorted(uncovered_surface, key=lambda k: (k[2], k[1], k[0])):
-        if key in occupied_cells:
-            continue
-
-        block = make_block_from_box(
-            key,
-            (1, 1, 1),
-            full_occupancy,
-            {key},
-            occupied_cells,
-        )
-
-        if block is None:
-            continue
-
-        blocks.append(block)
-        occupied_cells.update(block["cells"])
-
     return blocks
 
-def estimate_merge_level_for_limit(full_occupancy, surface_keys):
-    limit = max(1, int(RANDOM_OUTPUT_BLOCK_LIMIT))
-    desired_cells_per_block = max(1, math.ceil(len(surface_keys) / limit))
-    max_random_side = max(1, int(RANDOM_MAX_MERGE_SIDE))
-
-    for level in range(1, max(1, RANDOM_SEARCH_MAX_MERGE_LEVEL) + 1):
-        max_side = min(merge_level_max_side(level), max_random_side)
-
-        if max_side ** 3 >= desired_cells_per_block:
-            return level
-
-    return max(1, RANDOM_SEARCH_MAX_MERGE_LEVEL)
-
-def build_merged_blocks(full_occupancy, surface_keys):
-    if not RANDOMIZE_MERGE:
-        level = max(1, int(MERGE_LEVEL))
-        blocks = merge_surface_voxels(full_occupancy, surface_keys, level, randomize=False)
-        print(f"Merged blocks: {len(blocks)} at merge level {level}")
+def build_merged_blocks(full_occupancy, surface_keys, randomize=False):
+    if not randomize:
+        blocks = merge_surface_voxels(full_occupancy, surface_keys, randomize=False)
+        print(f"Merged blocks: {len(blocks)} at merge level {MERGE_LEVEL}")
         return blocks
 
     random.seed(RANDOM_SEED)
-    limit = max(1, int(RANDOM_OUTPUT_BLOCK_LIMIT))
-    level = estimate_merge_level_for_limit(full_occupancy, surface_keys)
-    best_blocks = None
-
-    effective_attempts = min(
-        max(1, int(RANDOM_ATTEMPTS)),
-        max(1, int(RANDOM_EFFECTIVE_ATTEMPTS_CAP)),
-    )
-
-    for attempt in range(effective_attempts):
-        blocks = merge_surface_voxels(full_occupancy, surface_keys, level, randomize=True)
-
-        if best_blocks is None or len(blocks) < len(best_blocks):
-            best_blocks = blocks
-
-        if len(blocks) <= limit:
-            print(
-                f"Random merged blocks: {len(blocks)} "
-                f"with max merge level {level}, attempt {attempt + 1}"
-            )
-            return blocks
-
-        if level < RANDOM_SEARCH_MAX_MERGE_LEVEL:
-            level += 1
-
-    if best_blocks is None:
-        best_blocks = merge_surface_voxels(full_occupancy, surface_keys, level, randomize=False)
-
+    blocks = merge_surface_voxels(full_occupancy, surface_keys, randomize=True)
     print(
-        f"Random merged blocks: {len(best_blocks)} "
-        f"(limit {limit}, requested as close as possible)"
+        f"Random merged blocks: {len(blocks)} "
+        f"with merge level range {RANDOM_MERGE_LEVEL_MIN}-{RANDOM_MERGE_LEVEL_MAX}"
     )
-    return best_blocks
+    return blocks
 
 # ============================================================
-# 生成 cube mesh
+# 生成 block mesh
 # ============================================================
 
-CUBE_VERTS = [
-    (-0.5, -0.5, -0.5),
-    ( 0.5, -0.5, -0.5),
-    ( 0.5,  0.5, -0.5),
-    (-0.5,  0.5, -0.5),
-    (-0.5, -0.5,  0.5),
-    ( 0.5, -0.5,  0.5),
-    ( 0.5,  0.5,  0.5),
-    (-0.5,  0.5,  0.5),
+FACE_DEFS = [
+    ((0, 0, -1), [(0, 1, 0), (0, 0, 0), (1, 0, 0), (1, 1, 0)]),
+    ((0, 0, 1), [(0, 0, 1), (0, 1, 1), (1, 1, 1), (1, 0, 1)]),
+    ((0, -1, 0), [(0, 0, 0), (0, 0, 1), (1, 0, 1), (1, 0, 0)]),
+    ((0, 1, 0), [(0, 1, 0), (1, 1, 0), (1, 1, 1), (0, 1, 1)]),
+    ((-1, 0, 0), [(0, 0, 0), (0, 1, 0), (0, 1, 1), (0, 0, 1)]),
+    ((1, 0, 0), [(1, 0, 0), (1, 0, 1), (1, 1, 1), (1, 1, 0)]),
 ]
 
-# face 顶点顺序需要保证法线朝外
-CUBE_FACES = [
-    ((0, 3, 2, 1), (0, 0, -1)),
-    ((4, 5, 6, 7), (0, 0, 1)),
-    ((0, 1, 5, 4), (0, -1, 0)),
-    ((1, 2, 6, 5), (1, 0, 0)),
-    ((2, 3, 7, 6), (0, 1, 0)),
-    ((3, 0, 4, 7), (-1, 0, 0)),
-]
-
-def block_center_from_min_key(grid, min_key, dims):
+def block_center_from_cells(grid, block):
+    min_key = block["min_key"]
+    dims = block["dims"]
     min_center = grid.center_from_key(min_key)
-    dx, dy, dz = normalized_dims(dims)
 
     return Vector((
-        round_f(min_center.x + (dx - 1) * VOXEL_SIZE * 0.5),
-        round_f(min_center.y + (dy - 1) * VOXEL_SIZE * 0.5),
-        round_f(min_center.z + (dz - 1) * VOXEL_SIZE * 0.5),
+        round_f(min_center.x + (dims[0] - 1) * VOXEL_SIZE * 0.5),
+        round_f(min_center.y + (dims[1] - 1) * VOXEL_SIZE * 0.5),
+        round_f(min_center.z + (dims[2] - 1) * VOXEL_SIZE * 0.5),
     ))
 
 def make_voxel_block_geometry(block):
     min_key = block["min_key"]
-    dx, dy, dz = block["dims"]
+    dims = block["dims"]
+    block_cells = set(block["cells"])
     verts = []
     vertex_by_coord = {}
     faces = []
@@ -1108,9 +1002,9 @@ def make_voxel_block_geometry(block):
         index = len(verts)
         vertex_by_coord[coord] = index
         verts.append((
-            round_f((x - dx * 0.5) * VOXEL_SIZE),
-            round_f((y - dy * 0.5) * VOXEL_SIZE),
-            round_f((z - dz * 0.5) * VOXEL_SIZE),
+            round_f((x - dims[0] * 0.5) * VOXEL_SIZE),
+            round_f((y - dims[1] * 0.5) * VOXEL_SIZE),
+            round_f((z - dims[2] * 0.5) * VOXEL_SIZE),
         ))
         return index
 
@@ -1118,53 +1012,22 @@ def make_voxel_block_geometry(block):
         faces.append([add_vertex(coord) for coord in coords])
         face_infos.append((cell_key, face_dir))
 
-    for ix in range(dx):
-        for iy in range(dy):
-            cell_key = (min_key[0] + ix, min_key[1] + iy, min_key[2])
-            add_face(
-                [(ix, iy, 0), (ix, iy + 1, 0), (ix + 1, iy + 1, 0), (ix + 1, iy, 0)],
-                cell_key,
-                (0, 0, -1),
-            )
+    for cell_key in block["cells"]:
+        lx = cell_key[0] - min_key[0]
+        ly = cell_key[1] - min_key[1]
+        lz = cell_key[2] - min_key[2]
 
-            cell_key = (min_key[0] + ix, min_key[1] + iy, min_key[2] + dz - 1)
-            add_face(
-                [(ix, iy, dz), (ix + 1, iy, dz), (ix + 1, iy + 1, dz), (ix, iy + 1, dz)],
-                cell_key,
-                (0, 0, 1),
-            )
+        for face_dir, offsets in FACE_DEFS:
+            neighbor = add_key(cell_key, face_dir)
 
-    for ix in range(dx):
-        for iz in range(dz):
-            cell_key = (min_key[0] + ix, min_key[1], min_key[2] + iz)
-            add_face(
-                [(ix, 0, iz), (ix + 1, 0, iz), (ix + 1, 0, iz + 1), (ix, 0, iz + 1)],
-                cell_key,
-                (0, -1, 0),
-            )
+            if neighbor in block_cells:
+                continue
 
-            cell_key = (min_key[0] + ix, min_key[1] + dy - 1, min_key[2] + iz)
-            add_face(
-                [(ix + 1, dy, iz), (ix, dy, iz), (ix, dy, iz + 1), (ix + 1, dy, iz + 1)],
-                cell_key,
-                (0, 1, 0),
-            )
-
-    for iy in range(dy):
-        for iz in range(dz):
-            cell_key = (min_key[0], min_key[1] + iy, min_key[2] + iz)
-            add_face(
-                [(0, iy + 1, iz), (0, iy, iz), (0, iy, iz + 1), (0, iy + 1, iz + 1)],
-                cell_key,
-                (-1, 0, 0),
-            )
-
-            cell_key = (min_key[0] + dx - 1, min_key[1] + iy, min_key[2] + iz)
-            add_face(
-                [(dx, iy, iz), (dx, iy + 1, iz), (dx, iy + 1, iz + 1), (dx, iy, iz + 1)],
-                cell_key,
-                (1, 0, 0),
-            )
+            coords = [
+                (lx + offset[0], ly + offset[1], lz + offset[2])
+                for offset in offsets
+            ]
+            add_face(coords, cell_key, face_dir)
 
     return verts, faces, face_infos
 
@@ -1278,6 +1141,239 @@ def make_voxel_block_mesh(
     return mesh
 
 # ============================================================
+# separate 模式：按原始面分块，不切新面
+# ============================================================
+
+def separate_base_count(target_count):
+    target_count = max(1, int(target_count))
+
+    if target_count % 2 == 1:
+        return target_count + 1
+
+    return target_count
+
+def separate_grid_shape(base_count):
+    if base_count <= 2:
+        return base_count, 1
+
+    return max(1, base_count // 2), 2
+
+def polygon_center(mesh, poly):
+    center = Vector((0.0, 0.0, 0.0))
+
+    for vertex_index in poly.vertices:
+        center += mesh.vertices[vertex_index].co
+
+    if len(poly.vertices) > 0:
+        center /= len(poly.vertices)
+
+    return center
+
+def separate_partition_index(center, mesh_center, min_z, max_z, vertical_parts, horizontal_parts):
+    if vertical_parts <= 1:
+        vertical_index = 0
+    else:
+        angle = math.atan2(center.y - mesh_center.y, center.x - mesh_center.x)
+        angle = (angle + math.tau) % math.tau
+        vertical_index = int(angle / math.tau * vertical_parts)
+        vertical_index = min(vertical_parts - 1, max(0, vertical_index))
+
+    if horizontal_parts <= 1 or abs(max_z - min_z) < EPSILON:
+        horizontal_index = 0
+    else:
+        z_ratio = (center.z - min_z) / (max_z - min_z)
+        horizontal_index = int(z_ratio * horizontal_parts)
+        horizontal_index = min(horizontal_parts - 1, max(0, horizontal_index))
+
+    return horizontal_index * vertical_parts + vertical_index
+
+def adjacent_separate_pairs(vertical_parts, horizontal_parts):
+    pairs = []
+
+    for h in range(horizontal_parts):
+        for v in range(vertical_parts):
+            index = h * vertical_parts + v
+
+            if vertical_parts > 1:
+                next_v = (v + 1) % vertical_parts
+                pairs.append((index, h * vertical_parts + next_v))
+
+            if h + 1 < horizontal_parts:
+                pairs.append((index, (h + 1) * vertical_parts + v))
+
+    return pairs
+
+def merge_random_adjacent_partitions(partitions, target_count, vertical_parts, horizontal_parts):
+    rng = random.Random(SEPARATE_RANDOM_SEED)
+
+    while len(partitions) > target_count:
+        available_indices = set(partitions.keys())
+        pairs = [
+            pair for pair in adjacent_separate_pairs(vertical_parts, horizontal_parts)
+            if pair[0] in available_indices and pair[1] in available_indices
+        ]
+
+        if not pairs:
+            keys = sorted(partitions.keys())
+            if len(keys) < 2:
+                break
+            pairs = [(keys[i], keys[i + 1]) for i in range(len(keys) - 1)]
+
+        keep, remove = rng.choice(pairs)
+
+        if keep not in partitions or remove not in partitions:
+            continue
+
+        partitions[keep].extend(partitions[remove])
+        del partitions[remove]
+
+def build_separate_partitions(mesh):
+    target_count = max(1, int(SEPARATE_TARGET_BLOCKS))
+    base_count = separate_base_count(target_count)
+    vertical_parts, horizontal_parts = separate_grid_shape(base_count)
+    min_co, max_co = get_bounds(mesh)
+    mesh_center = (min_co + max_co) * 0.5
+    partitions = {i: [] for i in range(base_count)}
+
+    for poly in mesh.polygons:
+        center = polygon_center(mesh, poly)
+        index = separate_partition_index(
+            center,
+            mesh_center,
+            min_co.z,
+            max_co.z,
+            vertical_parts,
+            horizontal_parts,
+        )
+        partitions[index].append(poly.index)
+
+    partitions = {
+        index: poly_indices
+        for index, poly_indices in partitions.items()
+        if poly_indices
+    }
+
+    if target_count % 2 == 1 and len(partitions) > target_count:
+        merge_random_adjacent_partitions(
+            partitions,
+            target_count,
+            vertical_parts,
+            horizontal_parts,
+        )
+
+    result = [
+        tuple(poly_indices)
+        for _, poly_indices in sorted(partitions.items(), key=lambda item: item[0])
+    ]
+
+    print(
+        f"Separate partitions: {len(result)} "
+        f"(target {target_count}, grid {vertical_parts}x{horizontal_parts})"
+    )
+    return result
+
+def make_separate_mesh(name, source_mesh, poly_indices):
+    vertex_map = {}
+    old_vertex_by_new = []
+    verts = []
+    faces = []
+    source_loops_by_new_poly = []
+    source_poly_by_new_poly = []
+
+    def mapped_vertex(old_index):
+        if old_index in vertex_map:
+            return vertex_map[old_index]
+
+        new_index = len(verts)
+        vertex_map[old_index] = new_index
+        old_vertex_by_new.append(old_index)
+        verts.append(source_mesh.vertices[old_index].co.copy())
+        return new_index
+
+    for poly_index in poly_indices:
+        poly = source_mesh.polygons[poly_index]
+        faces.append([mapped_vertex(vertex_index) for vertex_index in poly.vertices])
+        source_loops_by_new_poly.append(tuple(poly.loop_indices))
+        source_poly_by_new_poly.append(poly_index)
+
+    mesh = bpy.data.meshes.new(name)
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+
+    for mat in source_mesh.materials:
+        mesh.materials.append(mat)
+
+    for src_uv_layer in source_mesh.uv_layers:
+        mesh.uv_layers.new(name=src_uv_layer.name)
+
+    for src_attr in source_mesh.color_attributes:
+        try:
+            mesh.color_attributes.new(
+                name=src_attr.name,
+                type=src_attr.data_type,
+                domain=src_attr.domain
+            )
+        except RuntimeError:
+            pass
+
+    for new_poly_index, poly in enumerate(mesh.polygons):
+        src_poly = source_mesh.polygons[source_poly_by_new_poly[new_poly_index]]
+        src_loop_indices = source_loops_by_new_poly[new_poly_index]
+        poly.material_index = min(src_poly.material_index, max(0, len(mesh.materials) - 1))
+
+        for corner_index, loop_index in enumerate(poly.loop_indices):
+            src_loop_index = src_loop_indices[corner_index]
+
+            for layer_index, uv_layer in enumerate(mesh.uv_layers):
+                uv_layer.data[loop_index].uv = source_mesh.uv_layers[layer_index].data[src_loop_index].uv
+
+    for color_attr in mesh.color_attributes:
+        src_attr = source_mesh.color_attributes.get(color_attr.name)
+
+        if src_attr is None:
+            continue
+
+        if color_attr.domain == "CORNER":
+            for new_poly_index, poly in enumerate(mesh.polygons):
+                src_loop_indices = source_loops_by_new_poly[new_poly_index]
+                for corner_index, loop_index in enumerate(poly.loop_indices):
+                    src_loop_index = src_loop_indices[corner_index]
+                    color_attr.data[loop_index].color = src_attr.data[src_loop_index].color
+
+        elif color_attr.domain == "POINT":
+            for new_vertex_index, old_vertex_index in enumerate(old_vertex_by_new):
+                color_attr.data[new_vertex_index].color = src_attr.data[old_vertex_index].color
+
+        elif color_attr.domain == "FACE":
+            for new_poly_index, src_poly_index in enumerate(source_poly_by_new_poly):
+                color_attr.data[new_poly_index].color = src_attr.data[src_poly_index].color
+
+    try:
+        if source_mesh.color_attributes.active_color:
+            active_name = source_mesh.color_attributes.active_color.name
+            for i, attr in enumerate(mesh.color_attributes):
+                if attr.name == active_name:
+                    mesh.color_attributes.active_color_index = i
+                    break
+    except Exception:
+        pass
+
+    try:
+        if source_mesh.color_attributes.render_color_index >= 0:
+            src_render_attr = source_mesh.color_attributes[
+                source_mesh.color_attributes.render_color_index
+            ]
+            for i, attr in enumerate(mesh.color_attributes):
+                if attr.name == src_render_attr.name:
+                    mesh.color_attributes.render_color_index = i
+                    break
+    except Exception:
+        pass
+
+    mesh.update()
+    return mesh
+
+# ============================================================
 # Mesh 获取
 # ============================================================
 
@@ -1308,6 +1404,38 @@ def shatter_object(obj):
         print(f"Skipped {obj.name}: no vertices.")
         return
 
+    if SHATTER_MODE == 2:
+        partitions = build_separate_partitions(source_mesh)
+
+        if len(partitions) > MAX_OUTPUT_CUBES_PER_OBJECT:
+            raise RuntimeError(
+                f"{obj.name} would generate {len(partitions)} blocks, "
+                f"which exceeds MAX_OUTPUT_CUBES_PER_OBJECT."
+            )
+
+        output_collection = create_output_collection_for_object(obj)
+
+        for i, poly_indices in enumerate(partitions):
+            block_mesh = make_separate_mesh(
+                name=f"{obj.name}_separate_{i:05d}_mesh",
+                source_mesh=source_mesh,
+                poly_indices=poly_indices,
+            )
+
+            block_obj = bpy.data.objects.new(
+                f"{obj.name}_separate_{i:05d}",
+                block_mesh
+            )
+
+            output_collection.objects.link(block_obj)
+            block_obj.matrix_world = rounded_matrix(source_matrix_world)
+
+        if USE_EVALUATED_MESH:
+            bpy.data.meshes.remove(source_mesh)
+
+        print(f"Done: {obj.name}")
+        return
+
     grid = VoxelGrid(source_mesh)
 
     print(f"Grid origin center: {grid.origin_center}")
@@ -1330,7 +1458,7 @@ def shatter_object(obj):
 
     print(f"Outer layer cubes: {len(output_keys)}")
 
-    blocks = build_merged_blocks(full_occupancy, output_keys)
+    blocks = build_merged_blocks(full_occupancy, output_keys, randomize=(SHATTER_MODE == 1))
 
     if len(blocks) > MAX_OUTPUT_CUBES_PER_OBJECT:
         raise RuntimeError(
@@ -1351,7 +1479,7 @@ def shatter_object(obj):
     )
 
     for i, block in enumerate(sorted_blocks):
-        center = block_center_from_min_key(grid, block["min_key"], block["dims"])
+        center = block_center_from_cells(grid, block)
         center = round_vector(center)
 
         block_mesh = make_voxel_block_mesh(
@@ -1384,6 +1512,9 @@ selected_mesh_objects = [
     obj for obj in bpy.context.selected_objects
     if obj.type == "MESH"
 ]
+
+if SHATTER_MODE not in {0, 1, 2}:
+    raise RuntimeError("SHATTER_MODE must be 0 (merge), 1 (random), or 2 (separate).")
 
 if not selected_mesh_objects:
     raise RuntimeError("请先选中一个或多个 Mesh 对象。")
