@@ -1311,18 +1311,61 @@ function updateFocusButton(): void {
   focusToggleBtn.dataset.next = next;
 }
 
-function downloadLayout(): void {
+interface SaveFilePickerWindow extends Window {
+  showSaveFilePicker?: (options: {
+    suggestedName: string;
+    types: Array<{
+      description: string;
+      accept: Record<string, string[]>;
+    }>;
+  }) => Promise<{
+    createWritable: () => Promise<{
+      write: (data: Blob) => Promise<void>;
+      close: () => Promise<void>;
+    }>;
+  }>;
+}
+
+async function downloadLayout(): Promise<void> {
   currentLayout.MapMeta.LevelName = currentLevelName();
-  const blob = new Blob([JSON.stringify(currentLayout, null, 2)], { type: "application/json" });
+  const filename = `${downloadFileStem(currentLayout.MapMeta.LevelName)}.json`;
+  const saveFilePicker = (window as SaveFilePickerWindow).showSaveFilePicker;
+  if (saveFilePicker) {
+    try {
+      const handle = await saveFilePicker({
+        suggestedName: filename,
+        types: [{
+          description: "Maze JSON",
+          accept: { "application/json": [".json"] },
+        }],
+      });
+      const blob = exportLayoutBlob();
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      renderLog([{ kind: "success", message: `Saved ${filename}.` }]);
+      return;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      const reason = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+      renderLog([{ kind: "warn", message: `Save dialog unavailable (${reason}); falling back to browser download.` }]);
+    }
+  }
+
+  const blob = exportLayoutBlob();
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${downloadFileStem(currentLayout.MapMeta.LevelName)}.json`;
+  link.download = filename;
   link.style.display = "none";
   document.body.append(link);
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportLayoutBlob(): Blob {
+  return new Blob([JSON.stringify(currentLayout, null, 2)], { type: "application/json" });
 }
 
 function downloadFileStem(levelName: string): string {
