@@ -61,16 +61,13 @@ function randomOdd(min: number, max: number): number {
 }
 
 function createRandomSeedState(): GeneratorSeedState {
+  const boundSize = randomOdd(7, 15);
   return {
     random: createRandomSeed(),
     targetDifficulty: Math.floor(Math.random() * 23) + 8,
     targetCheckpoints: Math.floor(Math.random() * 4),
     maxSpins: Math.floor(Math.random() * 5),
-    bounds: {
-      x: randomOdd(7, 15),
-      y: randomOdd(7, 15),
-      z: randomOdd(1, 7),
-    },
+    bounds: cubicBounds(boundSize),
   };
 }
 
@@ -124,11 +121,7 @@ function parseSeedState(seed: string): GeneratorSeedState | null {
     targetDifficulty: Math.max(1, Math.floor(targetDifficulty)),
     targetCheckpoints: Math.max(0, Math.floor(targetCheckpoints)),
     maxSpins: Math.max(0, Math.floor(maxSpins)),
-    bounds: {
-      x: normalizeBoundSize(bounds[0]),
-      y: normalizeBoundSize(bounds[1]),
-      z: normalizeBoundSize(bounds[2]),
-    },
+    bounds: cubicBounds(Math.max(...bounds)),
   };
 }
 
@@ -158,6 +151,10 @@ app.innerHTML = `
           </div>
           <div class="collapsible-content">
             <label class="field">
+              <span class="help-label" data-help="迷宫名称。它会写入导出的 JSON，并作为下载文件名。">Name</span>
+              <input id="levelNameInput" type="text" value="TypeScript_Generated_Web" />
+            </label>
+            <label class="field">
               <span class="help-label" data-help="完整生成种子，格式为 bm01-random-difficulty-checkpoints-spins-bounds。输入有效 seed 会自动反写配置并生成迷宫。">Seed</span>
               <div class="seed-row">
                 <input id="seedInput" type="text" value="${encodeSeedState(createInitialSeedState())}" />
@@ -177,12 +174,8 @@ app.innerHTML = `
               <input id="maxSpinsInput" type="number" min="0" step="1" value="${DEFAULT_GENERATOR_OPTIONS.maxSpins}" />
             </label>
             <label class="field">
-              <span class="help-label" data-help="生成边界的实际双边尺寸，单位是逻辑 grid。只使用 1、3、5、7 这样的奇数；1 等于旧逻辑里的 0，3 等于旧逻辑里的 1。">Bounds X/Y/Z</span>
-              <div class="triple">
-                <input id="boundX" type="number" min="1" step="2" value="${DEFAULT_GENERATOR_OPTIONS.bounds.x}" />
-                <input id="boundY" type="number" min="1" step="2" value="${DEFAULT_GENERATOR_OPTIONS.bounds.y}" />
-                <input id="boundZ" type="number" min="1" step="2" value="${DEFAULT_GENERATOR_OPTIONS.bounds.z}" />
-              </div>
+              <span class="help-label" data-help="生成边界的立方尺寸，XYZ 使用同一个逻辑 grid 大小。只使用 1、3、5、7 这样的奇数；1 等于旧逻辑里的 0，3 等于旧逻辑里的 1。">Bounds</span>
+              <input id="boundSize" type="number" min="1" step="2" value="${DEFAULT_GENERATOR_OPTIONS.bounds.x}" />
             </label>
             <div class="actions">
               <button id="moveCenterBtn" title="按 grid 整数偏移当前迷宫，使布局尽量落在当前 bounds 的中心。">Move to center</button>
@@ -286,13 +279,12 @@ const buildTrayToggleBtn = document.querySelector<HTMLButtonElement>("#buildTray
 const partTabs = document.querySelector<HTMLDivElement>("#partTabs")!;
 const descTabs = document.querySelector<HTMLDivElement>("#descTabs")!;
 const partStrip = document.querySelector<HTMLDivElement>("#partStrip")!;
+const levelNameInput = document.querySelector<HTMLInputElement>("#levelNameInput")!;
 const seedInput = document.querySelector<HTMLInputElement>("#seedInput")!;
 const difficultyInput = document.querySelector<HTMLInputElement>("#difficultyInput")!;
 const checkpointInput = document.querySelector<HTMLInputElement>("#checkpointInput")!;
 const maxSpinsInput = document.querySelector<HTMLInputElement>("#maxSpinsInput")!;
-const boundX = document.querySelector<HTMLInputElement>("#boundX")!;
-const boundY = document.querySelector<HTMLInputElement>("#boundY")!;
-const boundZ = document.querySelector<HTMLInputElement>("#boundZ")!;
+const boundSize = document.querySelector<HTMLInputElement>("#boundSize")!;
 
 const viewer = new MazeViewer(viewerHost);
 let csvText = railConfigCsv;
@@ -547,9 +539,7 @@ function applySeedState(state: GeneratorSeedState): void {
   difficultyInput.value = String(state.targetDifficulty);
   checkpointInput.value = String(state.targetCheckpoints);
   maxSpinsInput.value = String(state.maxSpins);
-  boundX.value = String(state.bounds.x);
-  boundY.value = String(state.bounds.y);
-  boundZ.value = String(state.bounds.z);
+  boundSize.value = String(Math.max(state.bounds.x, state.bounds.y, state.bounds.z));
 }
 
 function generateLayout(state: GeneratorSeedState): void {
@@ -565,6 +555,7 @@ function generateLayout(state: GeneratorSeedState): void {
     });
     currentLayout = generator.generate();
     currentLayout.MapMeta.Seed = encodeSeedState(state);
+    currentLayout.MapMeta.LevelName = currentLevelName();
     buildHoverTarget = null;
     setLayout(currentLayout);
     resetLayoutHistory(currentLayout, null);
@@ -643,11 +634,10 @@ function commitLayout(layout: MazeLayout, keepSelectedId: number | null = null):
 
 function applyHistorySnapshot(snapshot: LayoutHistorySnapshot): void {
   seedInput.value = snapshot.seed;
-  boundX.value = String(snapshot.bounds.x);
-  boundY.value = String(snapshot.bounds.y);
-  boundZ.value = String(snapshot.bounds.z);
+  boundSize.value = String(Math.max(snapshot.bounds.x, snapshot.bounds.y, snapshot.bounds.z));
   buildHoverTarget = null;
   currentLayout = cloneLayout(snapshot.layout);
+  applyLevelNameFromLayout(currentLayout);
   setLayout(currentLayout, snapshot.selectedRailId, false);
   updateBuildPreview();
 }
@@ -702,6 +692,14 @@ function restoreSeedFromLayout(layout: MazeLayout): string | null {
   seedInput.value = encodeSeedState(state);
   applySeedState(state);
   return seedInput.value;
+}
+
+function currentLevelName(): string {
+  return levelNameInput.value.trim() || "maze_layout";
+}
+
+function applyLevelNameFromLayout(layout: MazeLayout): void {
+  levelNameInput.value = layout.MapMeta.LevelName || "maze_layout";
 }
 
 function cloneLayout(layout: MazeLayout): MazeLayout {
@@ -1026,15 +1024,9 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 function currentBounds(): Vec3Dict {
-  const read = (input: HTMLInputElement, fallback: number) => {
-    const value = Number(input.value);
-    return Number.isFinite(value) ? normalizeBoundSize(value) : fallback;
-  };
-  return {
-    x: read(boundX, DEFAULT_GENERATOR_OPTIONS.bounds.x),
-    y: read(boundY, DEFAULT_GENERATOR_OPTIONS.bounds.y),
-    z: read(boundZ, DEFAULT_GENERATOR_OPTIONS.bounds.z),
-  };
+  const value = Number(boundSize.value);
+  const size = Number.isFinite(value) ? normalizeBoundSize(value) : DEFAULT_GENERATOR_OPTIONS.bounds.x;
+  return cubicBounds(size);
 }
 
 function centerOffsetForBounds(layout: MazeLayout, bounds: Vec3Dict): Vec3Dict {
@@ -1073,17 +1065,15 @@ function moveLayoutToCenter(): void {
 
 function fitLayoutBounds(): void {
   const box = layoutBounds(currentLayout);
-  const fitted = {
-    x: normalizeBoundSize(box.max.x - box.min.x + 1),
-    y: normalizeBoundSize(box.max.y - box.min.y + 1),
-    z: normalizeBoundSize(box.max.z - box.min.z + 1),
-  };
-  boundX.value = String(fitted.x);
-  boundY.value = String(fitted.y);
-  boundZ.value = String(fitted.z);
+  const fitted = cubicBounds(Math.max(
+    box.max.x - box.min.x + 1,
+    box.max.y - box.min.y + 1,
+    box.max.z - box.min.z + 1,
+  ));
+  boundSize.value = String(fitted.x);
   const offset = centerOffsetForBounds(currentLayout, fitted);
   commitLayout(translateLayout(currentLayout, offset));
-  renderLog([{ kind: "info", message: `Fitted bounds to ${fitted.x}/${fitted.y}/${fitted.z} and centered by (${offset.x}, ${offset.y}, ${offset.z}).` }]);
+  renderLog([{ kind: "info", message: `Fitted bounds to ${fitted.x} and centered by (${offset.x}, ${offset.y}, ${offset.z}).` }]);
 }
 
 function deleteRail(railId: number): void {
@@ -1296,15 +1286,18 @@ function refreshBoundsOnly(): void {
 }
 
 function normalizeBoundInputs(): void {
-  [boundX, boundY, boundZ].forEach((input) => {
-    const value = Number(input.value);
-    if (Number.isFinite(value)) input.value = String(normalizeBoundSize(value));
-  });
+  const value = Number(boundSize.value);
+  if (Number.isFinite(value)) boundSize.value = String(normalizeBoundSize(value));
 }
 
 function normalizeBoundSize(value: number): number {
   const whole = Math.max(1, Math.round(value));
   return whole % 2 === 0 ? whole + 1 : whole;
+}
+
+function cubicBounds(value: number): Vec3Dict {
+  const size = normalizeBoundSize(value);
+  return { x: size, y: size, z: size };
 }
 
 function boundRadius(size: number): number {
@@ -1319,13 +1312,19 @@ function updateFocusButton(): void {
 }
 
 function downloadLayout(): void {
+  currentLayout.MapMeta.LevelName = currentLevelName();
   const blob = new Blob([JSON.stringify(currentLayout, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `maze_layout_${Date.now()}.json`;
+  link.download = `${downloadFileStem(currentLayout.MapMeta.LevelName)}.json`;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function downloadFileStem(levelName: string): string {
+  const stem = levelName.trim().replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_").replace(/\.+$/, "");
+  return stem || "maze_layout";
 }
 
 function handleFile(file: File): void {
@@ -1335,6 +1334,7 @@ function handleFile(file: File): void {
     if (file.name.toLowerCase().endsWith(".json")) {
       const layout = JSON.parse(text) as MazeLayout;
       const restoredSeed = restoreSeedFromLayout(layout);
+      applyLevelNameFromLayout(layout);
       setLayout(layout);
       resetLayoutHistory(layout, null);
       renderLog([{ kind: "info", message: restoredSeed ? `Loaded ${file.name}; restored seed ${restoredSeed}` : `Loaded ${file.name}` }]);
@@ -1406,7 +1406,10 @@ partStrip.addEventListener("click", (event) => {
   if (!familyKey) return;
   selectBuildFamily(familyKey);
 });
-[boundX, boundY, boundZ].forEach((input) => input.addEventListener("input", refreshBoundsOnly));
+boundSize.addEventListener("input", refreshBoundsOnly);
+levelNameInput.addEventListener("input", () => {
+  currentLayout.MapMeta.LevelName = currentLevelName();
+});
 window.addEventListener("keydown", handleEditorKeydown);
 viewAxis.addEventListener("click", (event) => {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-view]");
