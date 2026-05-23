@@ -41,7 +41,7 @@ CSV local data -> local footprint/exits -> transform by Rail Rot_Abs -> add Pos_
 
 ## Footprint Rules
 
-Generate footprint in local coordinates first. If the CSV row has `OccupiedCells`, those cells are authoritative. Name-based footprint generation is only a legacy fallback.
+Generate footprint in local coordinates first. If the CSV row has `OccupiedCells`, those cells are authoritative. A single `((X=0,Y=0,Z=0))` value on a larger named rail is treated as placeholder data and falls back to name-based footprint generation.
 
 - Forward rail: expands along local `+X`.
 - `L90` / `R90`: expands in local `Y`.

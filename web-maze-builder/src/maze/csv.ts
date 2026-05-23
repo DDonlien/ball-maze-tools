@@ -1,4 +1,5 @@
 import { GRID_TO_WORLD_SCALE } from "./constants";
+import { calculateLocalOccupiedCells } from "./generator";
 import { ExitLogic, RailConfigItem, RotAbs, Vector3 } from "./types";
 
 function parseCsvRows(input: string): string[][] {
@@ -290,6 +291,10 @@ function parseOccupiedCells(cellsText: string | undefined): Vector3[] {
     .filter((cell): cell is Vector3 => cell !== null);
 }
 
+function isSingleOriginCell(cells: Vector3[]): boolean {
+  return cells.length === 1 && cells[0].x === 0 && cells[0].y === 0 && cells[0].z === 0;
+}
+
 function defaultSpinDiff(): number[] {
   return [1, 1, 1, 1];
 }
@@ -364,9 +369,12 @@ export function loadConfigFromCsv(csvText: string): Map<string, RailConfigItem> 
     const diffBase = normalizeNumber(getRowValue(row, ["Diff_Base", "Difficulty"]), 0);
     const sizeRev = parseSize(row, rowName);
     const occupiedCells = parseOccupiedCells(getRowValue(row, ["OccupiedCells", "Occupied_Cells", "Occupation"]));
+    const inferredOccupiedCells = calculateLocalOccupiedCells(rowName, sizeRev);
+    const normalizedOccupiedCells =
+      isSingleOriginCell(occupiedCells) && inferredOccupiedCells.length > 1 ? inferredOccupiedCells : occupiedCells;
     const exitText = getRowValue(row, ["Exits", "ExitArray", "Exit_Array"]);
     const hasNewExitFormat = !!exitText && /\b(Location|Rotation|SpinConfig|ExitIndex)\s*=/i.test(exitText);
-    const hasExplicitGeometry = hasNewExitFormat || occupiedCells.length > 0;
+    const hasExplicitGeometry = hasNewExitFormat || normalizedOccupiedCells.length > 0;
     let exitsLogic = exitText ? parseExitArray(exitText) : [];
 
     if (exitsLogic.length === 0) {
@@ -419,7 +427,7 @@ export function loadConfigFromCsv(csvText: string): Map<string, RailConfigItem> 
       diffBase,
       sizeRev,
       exitsLogic,
-      localOccupiedCells: occupiedCells.length > 0 ? occupiedCells : undefined,
+      localOccupiedCells: normalizedOccupiedCells.length > 0 ? normalizedOccupiedCells : undefined,
       hasExplicitGeometry,
       isEnd: railType.includes("end"),
       isStart: railType.includes("start"),

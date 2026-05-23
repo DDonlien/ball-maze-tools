@@ -52,6 +52,7 @@ Current work focuses on the TypeScript/Vite generator and viewer in `src/`. The 
 - Updated the default `rail_config.csv` to the normalized rail config format with `OccupiedCells`, `Exits`, `RailClassRef`, and `SpinConfig`.
 - Added parser support for the new `---` row-name column, normalized `Location` / `Rotation` exits, per-spin enable/difficulty values, and explicit occupation cells.
 - Explicit config geometry now wins over name-pattern inference and legacy asset-specific L90 overrides.
+- Single-origin `OccupiedCells` placeholders on larger named rails are now expanded through the legacy footprint rules.
 - Generator placement, existing layout geometry recalculation, and manual build preview now use config-provided occupation cells when available.
 - Added known asset overrides:
   - `BP_Curve_L90_X4_Y4_Z1_Rail`

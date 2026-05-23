@@ -110,7 +110,7 @@ The default `rail_config.csv` uses the normalized rail config format:
 - `Diff_Base`: base difficulty for the rail.
 - `RailClassRef`: Unreal Blueprint class reference used by importer tooling.
 
-`OccupiedCells` and new-format `Exits` are authoritative. Legacy configs with `RowName`, `Size`, `Exit_Array`, and `SpinDiff` are still accepted; for those rows Maze Builder falls back to name-pattern footprint inference and compatibility overrides when needed.
+`OccupiedCells` and new-format `Exits` are authoritative. A single `((X=0,Y=0,Z=0))` value on a larger named rail is treated as placeholder occupation data and falls back to name-pattern footprint inference. Legacy configs with `RowName`, `Size`, `Exit_Array`, and `SpinDiff` are still accepted.
 
 ## Output
 

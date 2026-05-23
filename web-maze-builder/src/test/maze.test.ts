@@ -78,6 +78,7 @@ describe("TypeScript maze port", () => {
     expect([...config.values()].some((rail) => rail.isStart)).toBe(true);
     expect([...config.values()].some((rail) => rail.isEnd)).toBe(true);
     expect(config.get("BP_Start_F_X1_Y1_Z1_Rail")?.exitsLogic[0].Pos.toDict()).toEqual({ x: 1, y: 0, z: 0 });
+    expect(config.get("BP_Curve_L90_X2_Y2_Z1_Rail")?.localOccupiedCells).toHaveLength(4);
   });
 
   it("loads configured display names from flexible CSV name columns", () => {
@@ -110,6 +111,22 @@ describe("TypeScript maze port", () => {
       [10, 0, 0],
       [11, -1, 0],
     ]);
+  });
+
+  it("treats single-origin occupation as a placeholder for larger named rails", () => {
+    const config = loadConfigFromCsv([
+      "---,OccupiedCells,Exits,Diff_Base",
+      'BP_Curve_L90_X2_Y2_Z1_Rail,"((X=0,Y=0,Z=0))","((ExitIndex=0,Location=(X=1,Y=-2,Z=0),Rotation=(Pitch=0,Yaw=-90,Roll=0),SpinConfig=(S0=(Enable=True,Difficulty=1))))",0.65',
+    ].join("\n"));
+    const rail = config.get("BP_Curve_L90_X2_Y2_Z1_Rail");
+
+    expect(rail?.localOccupiedCells?.map((cell) => cell.toDict()).sort((a, b) => a.x - b.x || a.y - b.y || a.z - b.z)).toEqual([
+      { x: 0, y: -1, z: 0 },
+      { x: 0, y: 0, z: 0 },
+      { x: 1, y: -1, z: 0 },
+      { x: 1, y: 0, z: 0 },
+    ]);
+    expect(rail ? calculateOccupiedCellsForConfig(rail, new Vector3(-2, 3, 1), { p: 0, y: 90, r: 0 }) : []).toHaveLength(4);
   });
 
   it("parses build-library grouping from rail role names", () => {
