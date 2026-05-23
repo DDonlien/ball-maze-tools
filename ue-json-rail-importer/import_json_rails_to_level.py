@@ -230,6 +230,10 @@ def _read_rail_config_from_data_table() -> Dict[str, RailConfigRow]:
     if csv_text:
         return _read_rail_config_from_csv_text(csv_text, "DataTable export")
 
+    json_text = _data_table_to_json_text(data_table)
+    if json_text:
+        return _read_rail_config_from_json_text(json_text, "DataTable JSON export")
+
     config: Dict[str, RailConfigRow] = {}
     row_names = _get_data_table_row_names(data_table)
     row_map = _get_data_table_row_map(data_table)
@@ -266,6 +270,28 @@ def _data_table_to_csv_text(data_table) -> str:
     return ""
 
 
+def _data_table_to_json_text(data_table) -> str:
+    candidates = (
+        ("DataTableFunctionLibrary.export_data_table_to_json_string", lambda: unreal.DataTableFunctionLibrary.export_data_table_to_json_string(data_table)),
+        ("DataTableFunctionLibrary.get_data_table_as_json_string", lambda: unreal.DataTableFunctionLibrary.get_data_table_as_json_string(data_table)),
+        ("data_table.get_table_as_json", lambda: data_table.get_table_as_json()),
+        ("data_table.get_table_as_json_string", lambda: data_table.get_table_as_json_string()),
+    )
+
+    for label, getter in candidates:
+        try:
+            result = getter()
+            if isinstance(result, tuple):
+                result = next((item for item in result if isinstance(item, str) and item.strip()), "")
+            if isinstance(result, str) and result.strip():
+                _log(f"Read rail config DataTable via {label}.")
+                return result
+        except Exception:
+            pass
+
+    return ""
+
+
 def _read_rail_config_from_csv_text(csv_text: str, source_name: str) -> Dict[str, RailConfigRow]:
     config: Dict[str, RailConfigRow] = {}
     reader = csv.DictReader(io.StringIO(csv_text))
@@ -274,6 +300,34 @@ def _read_rail_config_from_csv_text(csv_text: str, source_name: str) -> Dict[str
 
     for row_number, row in enumerate(reader, start=2):
         _add_config_row_from_csv_dict(config, row, row_number, source_name)
+
+    return config
+
+
+def _read_rail_config_from_json_text(json_text: str, source_name: str) -> Dict[str, RailConfigRow]:
+    config: Dict[str, RailConfigRow] = {}
+    parsed = json.loads(json_text)
+
+    rows: List[Tuple[str, dict]] = []
+    if isinstance(parsed, list):
+        for index, row in enumerate(parsed, start=1):
+            if isinstance(row, dict):
+                row_name = str(row.get("Name") or row.get("RowName") or row.get("---") or "")
+                rows.append((row_name, row))
+    elif isinstance(parsed, dict):
+        row_source = parsed.get("Rows") if isinstance(parsed.get("Rows"), dict) else parsed
+        if isinstance(row_source, dict):
+            for row_name, row in row_source.items():
+                if isinstance(row, dict):
+                    row_copy = dict(row)
+                    row_copy.setdefault("RowName", str(row_name))
+                    rows.append((str(row_name), row_copy))
+
+    for index, (row_name, row) in enumerate(rows, start=1):
+        row_copy = dict(row)
+        if row_name:
+            row_copy.setdefault("RowName", row_name)
+        _add_config_row_from_csv_dict(config, row_copy, index, source_name)
 
     return config
 
@@ -366,10 +420,14 @@ def _get_row_ref_text(row, property_names: Sequence[str]) -> str:
     if row is None:
         return ""
 
+    target_names = {_normalize_property_name(property_name) for property_name in property_names}
+
     if isinstance(row, dict):
-        for property_name in property_names:
-            if property_name in row:
-                return _ref_value_to_text(row[property_name])
+        for key, value in row.items():
+            if _normalize_property_name(str(key)) in target_names:
+                text = _ref_value_to_text(value)
+                if text:
+                    return text
 
     for property_name in property_names:
         try:
@@ -387,11 +445,28 @@ def _get_row_ref_text(row, property_names: Sequence[str]) -> str:
                 if text:
                     return text
 
+    for attr_name in dir(row):
+        if not attr_name or attr_name.startswith("_"):
+            continue
+        normalized_attr_name = _normalize_property_name(attr_name)
+        if not any(target in normalized_attr_name for target in target_names):
+            continue
+        try:
+            text = _ref_value_to_text(getattr(row, attr_name))
+            if text:
+                return text
+        except Exception:
+            pass
+
     return ""
 
 
 def _camel_to_snake(value: str) -> str:
     return re.sub(r"(?<!^)(?=[A-Z])", "_", value).lower()
+
+
+def _normalize_property_name(value: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", value.lower())
 
 
 def _ref_value_to_text(value) -> str:
