@@ -115,3 +115,11 @@ The default `rail_config.csv` uses the normalized rail config format:
 ## Output
 
 Exported JSON records the generated result: rail IDs, positions, rotations, occupied cells, exits, connections, and `MapMeta` stats such as total difficulty, checkpoint segment difficulties, and spin usage.
+
+Rotation values exported in `Rot_Abs` and `Exit_Rot_Abs` use Unreal transform order:
+
+```text
+x = Roll, y = Pitch, z = Yaw
+```
+
+Maze Builder's internal generator still computes rotations as `p/y/r` (`Pitch/Yaw/Roll`). JSON drag-and-drop accepts both internal `p/y/r` files and exported UE `x/y/z` files.

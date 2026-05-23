@@ -72,6 +72,22 @@ Never derive `Exit_Dir_Abs` from `Exit_Pos_Rev - Pos_Rev`.
 
 Curve exit position and exit direction are different concepts. With Pitch/Roll/Yaw, a R90/L90 curve can have a position offset on another axis while still facing a horizontal direction.
 
+## Rotation Export Rules
+
+The generator and viewer use internal `RotAbs` objects as:
+
+```text
+p = Pitch, y = Yaw, r = Roll
+```
+
+Exported JSON for UE must use Transform rotation order:
+
+```text
+x = Roll, y = Pitch, z = Yaw
+```
+
+For example, internal `{ p: 0, y: 90, r: 0 }` must export as `{ x: 0, y: 0, z: 90 }`.
+
 ## Placement Rules
 
 When placing a child rail:

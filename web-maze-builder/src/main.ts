@@ -4,6 +4,7 @@ import sampleLayoutRaw from "../maze_layout.json?raw";
 import { loadConfigFromCsv } from "./maze/csv";
 import { calculateOccupiedCellsForConfig, composeRotAbs, exitDirFromLocalRot, MazeGenerator, transformByRotAbs } from "./maze/generator";
 import { buildFamilyDisplayName, parseRailNameParts, railDisplayName } from "./maze/railLibrary";
+import { normalizeRotationInput, rotAbsToUeXyz } from "./maze/rotation";
 import { DEFAULT_GENERATOR_OPTIONS, GRID_TO_WORLD_SCALE } from "./maze/constants";
 import { MazeLayout, MazeRailJson, RailConfigItem, RotAbs, Vec3Dict, Vector3 } from "./maze/types";
 import { BuildExitTarget, EditorMode, MazeViewer, RailEditAction, RailMeta } from "./viewer/MazeViewer";
@@ -718,9 +719,29 @@ function vectorFromDict(vec: Vec3Dict): Vector3 {
   return new Vector3(vec.x, vec.y, vec.z);
 }
 
-function normalizeRot(rot: RotAbs): RotAbs {
-  const normalize = (value: number | undefined) => (((Math.round((value ?? 0) / 90) * 90) % 360) + 360) % 360;
-  return { p: normalize(rot.p), y: normalize(rot.y), r: normalize(rot.r) };
+function normalizeRot(rot: RotAbs | (Partial<RotAbs> & Partial<Vec3Dict>)): RotAbs {
+  return normalizeRotationInput(rot);
+}
+
+function normalizeLayoutRotations(layout: MazeLayout): MazeLayout {
+  layout.Rail.forEach((rail) => {
+    rail.Rot_Abs = normalizeRot(rail.Rot_Abs);
+    rail.Exit.forEach((exit) => {
+      exit.Exit_Rot_Abs = normalizeRot(exit.Exit_Rot_Abs);
+    });
+  });
+  return layout;
+}
+
+function layoutForExport(layout: MazeLayout): MazeLayout {
+  const exported = cloneLayout(layout);
+  exported.Rail.forEach((rail) => {
+    rail.Rot_Abs = rotAbsToUeXyz(rail.Rot_Abs) as unknown as RotAbs;
+    rail.Exit.forEach((exit) => {
+      exit.Exit_Rot_Abs = rotAbsToUeXyz(exit.Exit_Rot_Abs) as unknown as RotAbs;
+    });
+  });
+  return exported;
 }
 
 function updateLayoutMeta(layout: MazeLayout): MazeLayout {
@@ -1365,7 +1386,7 @@ async function downloadLayout(): Promise<void> {
 }
 
 function exportLayoutBlob(): Blob {
-  return new Blob([JSON.stringify(currentLayout, null, 2)], { type: "application/json" });
+  return new Blob([JSON.stringify(layoutForExport(currentLayout), null, 2)], { type: "application/json" });
 }
 
 function downloadFileStem(levelName: string): string {
@@ -1378,7 +1399,7 @@ function handleFile(file: File): void {
   reader.onload = () => {
     const text = String(reader.result ?? "");
     if (file.name.toLowerCase().endsWith(".json")) {
-      const layout = JSON.parse(text) as MazeLayout;
+      const layout = normalizeLayoutRotations(JSON.parse(text) as MazeLayout);
       const restoredSeed = restoreSeedFromLayout(layout);
       applyLevelNameFromLayout(layout);
       setLayout(layout);

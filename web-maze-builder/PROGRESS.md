@@ -58,6 +58,7 @@ Current work focuses on the TypeScript/Vite generator and viewer in `src/`. The 
   - `BP_Curve_L90_X4_Y4_Z1_Rail`
   - `BP_Curve_L90_Borderless_O_X2_Y2_Z1_Rail`
 - Reworked export direction so `Exit_Dir_Abs` is derived from `Exit_Rot_Abs`, not from position offset.
+- Exported JSON rotations now use UE transform order `x/y/z = Roll/Pitch/Yaw`, while the generator/viewer keep internal `p/y/r = Pitch/Yaw/Roll`.
 - Reworked placement footprint calculation toward the correct model:
   - generate local footprint first,
   - rotate local footprint with full `Rot_Abs`,

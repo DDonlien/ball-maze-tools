@@ -9,7 +9,7 @@
             "Rail_Index": 105,
             "Rail_ID": "BP_Straight_F_X1_Y1_Z1_Rail",
             "Pos_Abs": { "x": 1500.0, "y": -500.0, "z": 0.0 },
-            "Rot_Abs": { "p": 0.0, "y": 90.0, "r": 180.0 },
+            "Rot_Abs": { "x": 180.0, "y": 0.0, "z": 90.0 },
             "Size_Rev": { "x": 1, "y": 1, "z": 1 },
             "Diff_Base": 12.5,
             "Diff_Act": 25.5,

@@ -757,6 +757,12 @@ def _vec_from_grid_json(value: dict) -> unreal.Vector:
 
 
 def _rot_from_json(value: dict) -> unreal.Rotator:
+    if isinstance(value, dict) and any(key in value for key in ("x", "X", "z", "Z")):
+        return unreal.Rotator(
+            _number_from_json(value, ("y", "Y", "pitch", "Pitch", "p", "P")) + ROTATION_OFFSET.pitch,
+            _number_from_json(value, ("z", "Z", "yaw", "Yaw")) + ROTATION_OFFSET.yaw,
+            _number_from_json(value, ("x", "X", "roll", "Roll", "r", "R")) + ROTATION_OFFSET.roll,
+        )
     return unreal.Rotator(
         _number_from_json(value, ("p", "P", "pitch", "Pitch")) + ROTATION_OFFSET.pitch,
         _number_from_json(value, ("y", "Y", "yaw", "Yaw")) + ROTATION_OFFSET.yaw,
