@@ -1332,21 +1332,6 @@ function updateFocusButton(): void {
   focusToggleBtn.dataset.next = next;
 }
 
-interface SaveFilePickerWindow extends Window {
-  showSaveFilePicker?: (options: {
-    suggestedName: string;
-    types: Array<{
-      description: string;
-      accept: Record<string, string[]>;
-    }>;
-  }) => Promise<{
-    createWritable: () => Promise<{
-      write: (data: Blob | string) => Promise<void>;
-      close: () => Promise<void>;
-    }>;
-  }>;
-}
-
 async function downloadLayout(): Promise<void> {
   currentLayout.MapMeta.LevelName = currentLevelName();
   const filename = `${downloadFileStem(currentLayout.MapMeta.LevelName)}.json`;
@@ -1355,27 +1340,6 @@ async function downloadLayout(): Promise<void> {
   if (byteSize <= 0) {
     renderLog([{ kind: "fail", message: `Export aborted: ${filename} would be empty.` }]);
     return;
-  }
-  const saveFilePicker = (window as SaveFilePickerWindow).showSaveFilePicker;
-  if (saveFilePicker) {
-    try {
-      const handle = await saveFilePicker({
-        suggestedName: filename,
-        types: [{
-          description: "Maze JSON",
-          accept: { "application/json": [".json"] },
-        }],
-      });
-      const writable = await handle.createWritable();
-      await writable.write(text);
-      await writable.close();
-      renderLog([{ kind: "success", message: `Saved ${filename} (${byteSize} bytes).` }]);
-      return;
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") return;
-      const reason = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
-      renderLog([{ kind: "warn", message: `Save dialog unavailable (${reason}); falling back to browser download.` }]);
-    }
   }
 
   const blob = new Blob([text], { type: "application/json" });
