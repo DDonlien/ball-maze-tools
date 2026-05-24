@@ -1351,6 +1351,11 @@ async function downloadLayout(): Promise<void> {
   currentLayout.MapMeta.LevelName = currentLevelName();
   const filename = `${downloadFileStem(currentLayout.MapMeta.LevelName)}.json`;
   const text = exportLayoutText();
+  const byteSize = new Blob([text]).size;
+  if (byteSize <= 0) {
+    renderLog([{ kind: "fail", message: `Export aborted: ${filename} would be empty.` }]);
+    return;
+  }
   const saveFilePicker = (window as SaveFilePickerWindow).showSaveFilePicker;
   if (saveFilePicker) {
     try {
@@ -1364,7 +1369,7 @@ async function downloadLayout(): Promise<void> {
       const writable = await handle.createWritable();
       await writable.write(text);
       await writable.close();
-      renderLog([{ kind: "success", message: `Saved ${filename}.` }]);
+      renderLog([{ kind: "success", message: `Saved ${filename} (${byteSize} bytes).` }]);
       return;
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
@@ -1383,6 +1388,7 @@ async function downloadLayout(): Promise<void> {
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  renderLog([{ kind: "success", message: `Downloaded ${filename} (${byteSize} bytes).` }]);
 }
 
 function exportLayoutBlob(): Blob {
