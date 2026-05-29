@@ -1,0 +1,884 @@
+{
+  "MapMeta": {
+    "LevelName": "w03-l24",
+    "RailCount": 11,
+    "MazeDiff": 46.055335625,
+    "CheckpointCount": 1,
+    "SegmentDiffs": [
+      21.75533562,
+      24.3
+    ],
+    "SpinCount": 0,
+    "MaxSpins": 0,
+    "Seed": "bm01-81mwer-13-01-00-070707",
+    "RotationConvention": "ue-rpy-roll-flip-v2"
+  },
+  "Rail": [
+    {
+      "Rail_Index": 0,
+      "Rail_ID": "BP_Start_F_X1_Y1_Z1_Rail",
+      "Pos_Rev": {
+        "x": 0,
+        "y": -1,
+        "z": 0
+      },
+      "Pos_Abs": {
+        "x": 0,
+        "y": -16,
+        "z": 0
+      },
+      "Rot_Abs": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "Dir_Abs": "+X",
+      "Size_Rev": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      },
+      "Occupied_Cells_Rev": [
+        {
+          "x": 0,
+          "y": -1,
+          "z": 0
+        }
+      ],
+      "Diff_Base": 0,
+      "Diff_Act": 0,
+      "Prev_Index": -1,
+      "Next_Index": [
+        1
+      ],
+      "Exit": [
+        {
+          "Index": 0,
+          "Exit_Pos_Rev": {
+            "x": 1,
+            "y": -1,
+            "z": 0
+          },
+          "Exit_Pos_Abs": {
+            "x": 16,
+            "y": -16,
+            "z": 0
+          },
+          "Exit_Rot_Abs": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "Exit_Dir_Abs": "+X",
+          "SpinDiff": [
+            1,
+            1.5,
+            1.5,
+            1.5
+          ],
+          "IsConnected": true,
+          "TargetInstanceID": 1
+        }
+      ]
+    },
+    {
+      "Rail_Index": 1,
+      "Rail_ID": "BP_Bump_FD_Borderless_Caved_X2_Y1_Z2_Rail",
+      "Pos_Rev": {
+        "x": 1,
+        "y": -1,
+        "z": 0
+      },
+      "Pos_Abs": {
+        "x": 16,
+        "y": -16,
+        "z": 0
+      },
+      "Rot_Abs": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "Dir_Abs": "+X",
+      "Size_Rev": {
+        "x": 2,
+        "y": 1,
+        "z": 2
+      },
+      "Occupied_Cells_Rev": [
+        {
+          "x": 1,
+          "y": -1,
+          "z": -1
+        },
+        {
+          "x": 1,
+          "y": -1,
+          "z": 0
+        },
+        {
+          "x": 2,
+          "y": -1,
+          "z": -1
+        },
+        {
+          "x": 2,
+          "y": -1,
+          "z": 0
+        }
+      ],
+      "Diff_Base": 0,
+      "Diff_Act": 5.85,
+      "Prev_Index": 0,
+      "Next_Index": [
+        2
+      ],
+      "Exit": [
+        {
+          "Index": 0,
+          "Exit_Pos_Rev": {
+            "x": 3,
+            "y": -1,
+            "z": -1
+          },
+          "Exit_Pos_Abs": {
+            "x": 48,
+            "y": -16,
+            "z": -16
+          },
+          "Exit_Rot_Abs": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "Exit_Dir_Abs": "+X",
+          "SpinDiff": [
+            1,
+            2,
+            2,
+            2
+          ],
+          "IsConnected": true,
+          "TargetInstanceID": 2
+        }
+      ]
+    },
+    {
+      "Rail_Index": 2,
+      "Rail_ID": "BP_Curve_R90_Borderless_Caved_X1_Y1_Z1_Rail",
+      "Pos_Rev": {
+        "x": 3,
+        "y": -1,
+        "z": -1
+      },
+      "Pos_Abs": {
+        "x": 48,
+        "y": -16,
+        "z": -16
+      },
+      "Rot_Abs": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "Dir_Abs": "+X",
+      "Size_Rev": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      },
+      "Occupied_Cells_Rev": [
+        {
+          "x": 3,
+          "y": -1,
+          "z": -1
+        }
+      ],
+      "Diff_Base": 0,
+      "Diff_Act": 2.3775,
+      "Prev_Index": 1,
+      "Next_Index": [
+        3
+      ],
+      "Exit": [
+        {
+          "Index": 0,
+          "Exit_Pos_Rev": {
+            "x": 3,
+            "y": 0,
+            "z": -1
+          },
+          "Exit_Pos_Abs": {
+            "x": 48,
+            "y": 0,
+            "z": -16
+          },
+          "Exit_Rot_Abs": {
+            "x": 0,
+            "y": 0,
+            "z": 90
+          },
+          "Exit_Dir_Abs": "+Y",
+          "SpinDiff": [
+            1,
+            2,
+            2,
+            2
+          ],
+          "IsConnected": true,
+          "TargetInstanceID": 3
+        }
+      ]
+    },
+    {
+      "Rail_Index": 3,
+      "Rail_ID": "BP_Bump_FD_Borderless_X2_Y1_Z2_Rail",
+      "Pos_Rev": {
+        "x": 3,
+        "y": 0,
+        "z": -1
+      },
+      "Pos_Abs": {
+        "x": 48,
+        "y": 0,
+        "z": -16
+      },
+      "Rot_Abs": {
+        "x": 0,
+        "y": 0,
+        "z": 90
+      },
+      "Dir_Abs": "+Y",
+      "Size_Rev": {
+        "x": 2,
+        "y": 1,
+        "z": 2
+      },
+      "Occupied_Cells_Rev": [
+        {
+          "x": 3,
+          "y": 0,
+          "z": -2
+        },
+        {
+          "x": 3,
+          "y": 0,
+          "z": -1
+        },
+        {
+          "x": 3,
+          "y": 1,
+          "z": -2
+        },
+        {
+          "x": 3,
+          "y": 1,
+          "z": -1
+        }
+      ],
+      "Diff_Base": 0,
+      "Diff_Act": 10.458987500000001,
+      "Prev_Index": 2,
+      "Next_Index": [
+        4
+      ],
+      "Exit": [
+        {
+          "Index": 0,
+          "Exit_Pos_Rev": {
+            "x": 3,
+            "y": 2,
+            "z": -2
+          },
+          "Exit_Pos_Abs": {
+            "x": 48,
+            "y": 32,
+            "z": -32
+          },
+          "Exit_Rot_Abs": {
+            "x": 0,
+            "y": 0,
+            "z": 90
+          },
+          "Exit_Dir_Abs": "+Y",
+          "SpinDiff": [
+            1,
+            1.5,
+            1.5,
+            1.5
+          ],
+          "IsConnected": true,
+          "TargetInstanceID": 4
+        }
+      ]
+    },
+    {
+      "Rail_Index": 4,
+      "Rail_ID": "BP_Straight_U90_Borderless_L_X1_Y1_Z1_Rail",
+      "Pos_Rev": {
+        "x": 3,
+        "y": 2,
+        "z": -2
+      },
+      "Pos_Abs": {
+        "x": 48,
+        "y": 32,
+        "z": -32
+      },
+      "Rot_Abs": {
+        "x": 0,
+        "y": 0,
+        "z": 90
+      },
+      "Dir_Abs": "+Y",
+      "Size_Rev": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      },
+      "Occupied_Cells_Rev": [
+        {
+          "x": 3,
+          "y": 2,
+          "z": -2
+        }
+      ],
+      "Diff_Base": 0,
+      "Diff_Act": 3.068848125,
+      "Prev_Index": 3,
+      "Next_Index": [
+        5
+      ],
+      "Exit": [
+        {
+          "Index": 0,
+          "Exit_Pos_Rev": {
+            "x": 3,
+            "y": 2,
+            "z": -1
+          },
+          "Exit_Pos_Abs": {
+            "x": 48,
+            "y": 32,
+            "z": -16
+          },
+          "Exit_Rot_Abs": {
+            "x": 0,
+            "y": 90,
+            "z": 90
+          },
+          "Exit_Dir_Abs": "+Z",
+          "SpinDiff": [
+            1,
+            1.5,
+            1.5,
+            1.5
+          ],
+          "IsConnected": true,
+          "TargetInstanceID": 5
+        }
+      ]
+    },
+    {
+      "Rail_Index": 5,
+      "Rail_ID": "BP_Straight_FR90_X1_Y1_Z1_Rail",
+      "Pos_Rev": {
+        "x": 3,
+        "y": 2,
+        "z": -1
+      },
+      "Pos_Abs": {
+        "x": 48,
+        "y": 32,
+        "z": -16
+      },
+      "Rot_Abs": {
+        "x": 0,
+        "y": 90,
+        "z": 90
+      },
+      "Dir_Abs": "+Z",
+      "Size_Rev": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      },
+      "Occupied_Cells_Rev": [
+        {
+          "x": 3,
+          "y": 2,
+          "z": -1
+        }
+      ],
+      "Diff_Base": 0,
+      "Diff_Act": 0,
+      "Prev_Index": 4,
+      "Next_Index": [
+        6,
+        7
+      ],
+      "Exit": [
+        {
+          "Index": 0,
+          "Exit_Pos_Rev": {
+            "x": 3,
+            "y": 2,
+            "z": 0
+          },
+          "Exit_Pos_Abs": {
+            "x": 48,
+            "y": 32,
+            "z": 0
+          },
+          "Exit_Rot_Abs": {
+            "x": 0,
+            "y": 90,
+            "z": 90
+          },
+          "Exit_Dir_Abs": "+Z",
+          "SpinDiff": [
+            1,
+            1.5,
+            1.5,
+            1.5
+          ],
+          "IsConnected": true,
+          "TargetInstanceID": 6
+        },
+        {
+          "Index": 1,
+          "Exit_Pos_Rev": {
+            "x": 2,
+            "y": 2,
+            "z": -1
+          },
+          "Exit_Pos_Abs": {
+            "x": 32,
+            "y": 32,
+            "z": -16
+          },
+          "Exit_Rot_Abs": {
+            "x": 90,
+            "y": 0,
+            "z": 180
+          },
+          "Exit_Dir_Abs": "-X",
+          "SpinDiff": [
+            1,
+            1.5,
+            1.5,
+            1.5
+          ],
+          "IsConnected": true,
+          "TargetInstanceID": 7
+        }
+      ]
+    },
+    {
+      "Rail_Index": 6,
+      "Rail_ID": "BP_CheckPoint_F_X1_Y1_Z1_Rail",
+      "Pos_Rev": {
+        "x": 3,
+        "y": 2,
+        "z": 0
+      },
+      "Pos_Abs": {
+        "x": 48,
+        "y": 32,
+        "z": 0
+      },
+      "Rot_Abs": {
+        "x": 0,
+        "y": 90,
+        "z": 90
+      },
+      "Dir_Abs": "+Z",
+      "Size_Rev": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      },
+      "Occupied_Cells_Rev": [
+        {
+          "x": 3,
+          "y": 2,
+          "z": 0
+        }
+      ],
+      "Diff_Base": 0,
+      "Diff_Act": 0,
+      "Prev_Index": 5,
+      "Next_Index": [],
+      "Exit": [
+        {
+          "Index": 0,
+          "Exit_Pos_Rev": {
+            "x": 3,
+            "y": 2,
+            "z": 1
+          },
+          "Exit_Pos_Abs": {
+            "x": 48,
+            "y": 32,
+            "z": 16
+          },
+          "Exit_Rot_Abs": {
+            "x": 0,
+            "y": 90,
+            "z": 90
+          },
+          "Exit_Dir_Abs": "+Z",
+          "SpinDiff": [
+            1,
+            1.5,
+            1.5,
+            1.5
+          ],
+          "IsConnected": false,
+          "TargetInstanceID": -1
+        }
+      ]
+    },
+    {
+      "Rail_Index": 7,
+      "Rail_ID": "BP_Curve_U90_Borderless_Caved_X1_Y1_Z1_Rail",
+      "Pos_Rev": {
+        "x": 2,
+        "y": 2,
+        "z": -1
+      },
+      "Pos_Abs": {
+        "x": 32,
+        "y": 32,
+        "z": -16
+      },
+      "Rot_Abs": {
+        "x": 90,
+        "y": 0,
+        "z": 180
+      },
+      "Dir_Abs": "-X",
+      "Size_Rev": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      },
+      "Occupied_Cells_Rev": [
+        {
+          "x": 2,
+          "y": 2,
+          "z": -1
+        }
+      ],
+      "Diff_Base": 0,
+      "Diff_Act": 2,
+      "Prev_Index": 5,
+      "Next_Index": [
+        8
+      ],
+      "Exit": [
+        {
+          "Index": 0,
+          "Exit_Pos_Rev": {
+            "x": 2,
+            "y": 1,
+            "z": -1
+          },
+          "Exit_Pos_Abs": {
+            "x": 32,
+            "y": 16,
+            "z": -16
+          },
+          "Exit_Rot_Abs": {
+            "x": 90,
+            "y": 0,
+            "z": -90
+          },
+          "Exit_Dir_Abs": "-Y",
+          "SpinDiff": [
+            1,
+            2,
+            2,
+            2
+          ],
+          "IsConnected": true,
+          "TargetInstanceID": 8
+        }
+      ]
+    },
+    {
+      "Rail_Index": 8,
+      "Rail_ID": "BP_Straight_L90_Borderless_X1_Y1_Z1_Rail",
+      "Pos_Rev": {
+        "x": 2,
+        "y": 1,
+        "z": -1
+      },
+      "Pos_Abs": {
+        "x": 32,
+        "y": 16,
+        "z": -16
+      },
+      "Rot_Abs": {
+        "x": 90,
+        "y": 0,
+        "z": -90
+      },
+      "Dir_Abs": "-Y",
+      "Size_Rev": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      },
+      "Occupied_Cells_Rev": [
+        {
+          "x": 2,
+          "y": 1,
+          "z": -1
+        }
+      ],
+      "Diff_Base": 0,
+      "Diff_Act": 3.5999999999999996,
+      "Prev_Index": 7,
+      "Next_Index": [
+        9
+      ],
+      "Exit": [
+        {
+          "Index": 0,
+          "Exit_Pos_Rev": {
+            "x": 2,
+            "y": 1,
+            "z": 0
+          },
+          "Exit_Pos_Abs": {
+            "x": 32,
+            "y": 16,
+            "z": 0
+          },
+          "Exit_Rot_Abs": {
+            "x": 0,
+            "y": 90,
+            "z": 180
+          },
+          "Exit_Dir_Abs": "+Z",
+          "SpinDiff": [
+            1,
+            1.5,
+            1.5,
+            1.5
+          ],
+          "IsConnected": true,
+          "TargetInstanceID": 9
+        }
+      ]
+    },
+    {
+      "Rail_Index": 9,
+      "Rail_ID": "BP_Curve_D90_Borderless_X4_Y1_Z4_Rail",
+      "Pos_Rev": {
+        "x": 2,
+        "y": 1,
+        "z": 0
+      },
+      "Pos_Abs": {
+        "x": 32,
+        "y": 16,
+        "z": 0
+      },
+      "Rot_Abs": {
+        "x": 0,
+        "y": 90,
+        "z": 180
+      },
+      "Dir_Abs": "+Z",
+      "Size_Rev": {
+        "x": 4,
+        "y": 1,
+        "z": 4
+      },
+      "Occupied_Cells_Rev": [
+        {
+          "x": -1,
+          "y": 1,
+          "z": 0
+        },
+        {
+          "x": 0,
+          "y": 1,
+          "z": 0
+        },
+        {
+          "x": 1,
+          "y": 1,
+          "z": 0
+        },
+        {
+          "x": 2,
+          "y": 1,
+          "z": 0
+        },
+        {
+          "x": -1,
+          "y": 1,
+          "z": 1
+        },
+        {
+          "x": 0,
+          "y": 1,
+          "z": 1
+        },
+        {
+          "x": 1,
+          "y": 1,
+          "z": 1
+        },
+        {
+          "x": 2,
+          "y": 1,
+          "z": 1
+        },
+        {
+          "x": -1,
+          "y": 1,
+          "z": 2
+        },
+        {
+          "x": 0,
+          "y": 1,
+          "z": 2
+        },
+        {
+          "x": 1,
+          "y": 1,
+          "z": 2
+        },
+        {
+          "x": 2,
+          "y": 1,
+          "z": 2
+        },
+        {
+          "x": -1,
+          "y": 1,
+          "z": 3
+        },
+        {
+          "x": 0,
+          "y": 1,
+          "z": 3
+        },
+        {
+          "x": 1,
+          "y": 1,
+          "z": 3
+        },
+        {
+          "x": 2,
+          "y": 1,
+          "z": 3
+        }
+      ],
+      "Diff_Base": 0,
+      "Diff_Act": 18.7,
+      "Prev_Index": 8,
+      "Next_Index": [
+        10
+      ],
+      "Exit": [
+        {
+          "Index": 0,
+          "Exit_Pos_Rev": {
+            "x": -2,
+            "y": 1,
+            "z": 3
+          },
+          "Exit_Pos_Abs": {
+            "x": -32,
+            "y": 16,
+            "z": 48
+          },
+          "Exit_Rot_Abs": {
+            "x": 0,
+            "y": 0,
+            "z": 180
+          },
+          "Exit_Dir_Abs": "-X",
+          "SpinDiff": [
+            1,
+            1.5,
+            1.5,
+            1.5
+          ],
+          "IsConnected": true,
+          "TargetInstanceID": 10
+        }
+      ]
+    },
+    {
+      "Rail_Index": 10,
+      "Rail_ID": "BP_End_F_X1_Y1_Z1_Rail",
+      "Pos_Rev": {
+        "x": -2,
+        "y": 1,
+        "z": 3
+      },
+      "Pos_Abs": {
+        "x": -32,
+        "y": 16,
+        "z": 48
+      },
+      "Rot_Abs": {
+        "x": 0,
+        "y": 0,
+        "z": 180
+      },
+      "Dir_Abs": "-X",
+      "Size_Rev": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      },
+      "Occupied_Cells_Rev": [
+        {
+          "x": -2,
+          "y": 1,
+          "z": 3
+        }
+      ],
+      "Diff_Base": 0,
+      "Diff_Act": 0,
+      "Prev_Index": 9,
+      "Next_Index": [],
+      "Exit": [
+        {
+          "Index": 0,
+          "Exit_Pos_Rev": {
+            "x": -3,
+            "y": 1,
+            "z": 3
+          },
+          "Exit_Pos_Abs": {
+            "x": -48,
+            "y": 16,
+            "z": 48
+          },
+          "Exit_Rot_Abs": {
+            "x": 0,
+            "y": 0,
+            "z": 180
+          },
+          "Exit_Dir_Abs": "-X",
+          "SpinDiff": [
+            1,
+            1.5,
+            1.5,
+            1.5
+          ],
+          "IsConnected": false,
+          "TargetInstanceID": -1
+        }
+      ]
+    }
+  ]
+}
