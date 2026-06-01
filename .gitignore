@@ -5,3 +5,5 @@ coverage/
 playwright-report/
 test-results/
 .vite-dev*.log
+__pycache__/
+*.pyc

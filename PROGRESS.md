@@ -1,6 +1,6 @@
 # Repository Progress
 
-Last updated: 2026-05-13
+Last updated: 2026-06-02
 
 ## Scope
 
@@ -18,6 +18,7 @@ This repository is organized as a small suite of independent tools. Directory pr
 | `ue-asset-pivot-editor` | Usable | Bakes Static Mesh Pivot changes and can compensate selected level actors. |
 | `ue-material-instance-creator` | New / Usable | Creates Material Instances in the active Content Browser path from selected Materials using a fixed parent Material reference. |
 | `ue-texture-assigner` | Usable | Scans UE assets by naming convention and assigns Texture -> MI -> Static Mesh. |
+| `ue-folder-reference-checker` | New / Usable | Checks references crossing the boundary of a selected Content Browser folder and exports a CSV report. |
 | `blender-voxel-ball-shatter` | New / Usable | Blender script that converts selected mesh objects into voxel cube collections. |
 
 ## Repository Roadmap
@@ -28,6 +29,7 @@ This repository is organized as a small suite of independent tools. Directory pr
 - Prefer explicit config metadata over name-pattern inference where a tool currently depends on asset naming.
 - Keep Unreal scripts runnable inside Unreal Editor Python without requiring normal system Python execution.
 - Keep Blender scripts runnable inside Blender Python without requiring normal system Python execution.
+- Maintain root and per-tool `AGENTS.md`, `README.md`, `REQUIREMENTS.md`, `DESIGN.md`, and `agent-log/` entries according to `agent-template/`.
 
 ## Verification
 
