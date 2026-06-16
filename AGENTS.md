@@ -25,14 +25,13 @@ This file records repository-level rules for agents working in `ball-maze-tools`
 - Root `REQUIREMENTS.md`: cross-repository requirements and acceptance tracking.
 - Root `DESIGN.md`: shared visual guidance; use `不适用` for tools without custom UI.
 - Root `agent-log/`: repository-level execution logs.
-- Root `PROGRESS.md`: cross-repository roadmap and status.
 - Root `AGENTS.md`: general rules that apply to every tool.
 - Tool `README.md`: user-facing usage and configuration for one tool.
 - Tool `AGENTS.md`: tool-specific implementation rules and local document entry points.
 - Tool `REQUIREMENTS.md`: tool-specific requirements and acceptance tracking.
 - Tool `DESIGN.md`: tool-specific visual guidance or a note that it is not applicable.
 - Tool `agent-log/`: tool-specific execution logs.
-- Tool `PROGRESS.md`: tool-specific progress and known risks, only when needed.
+- Historical progress or status snapshots belong in the matching `agent-log/`.
 
 Use `agent-template/AGENTS.md` as the authoritative documentation-maintenance
 template. Keep the checked-in `agent-template/` free of nested Git metadata.
@@ -41,24 +40,24 @@ template. Keep the checked-in `agent-template/` free of nested Git metadata.
 
 Read a tool's local docs before editing it:
 
-- `blender-voxel-ball-shatter/AGENTS.md`
-- `ue-asset-pivot-editor/AGENTS.md`
-- `ue-folder-reference-checker/AGENTS.md`
-- `ue-json-rail-exporter/AGENTS.md`
-- `ue-json-rail-importer/AGENTS.md`
-- `ue-material-instance-creator/AGENTS.md`
-- `ue-rail-content-checker/AGENTS.md`
-- `ue-texture-assigner/AGENTS.md`
-- `web-hermite-spline-generator/AGENTS.md`
-- `web-maze-builder/AGENTS.md` contains the authoritative Maze Builder generation, coordinate, footprint, exit, seed, checkpoint, and self-spin rules.
-- `web-maze-builder/PROGRESS.md` contains the current Maze Builder implementation status and known risks.
+- `blender/blender-voxel-ball-shatter/AGENTS.md`
+- `ue/ue-asset-pivot-editor/AGENTS.md`
+- `ue/ue-folder-reference-checker/AGENTS.md`
+- `ue/ue-json-rail-exporter/AGENTS.md`
+- `ue/ue-json-rail-importer/AGENTS.md`
+- `ue/ue-material-instance-creator/AGENTS.md`
+- `ue/ue-rail-content-checker/AGENTS.md`
+- `ue/ue-selected-static-mesh-arranger/AGENTS.md`
+- `ue/ue-texture-assigner/AGENTS.md`
+- `web/web-hermite-spline-generator/AGENTS.md`
+- `web/web-maze-builder/AGENTS.md` contains the authoritative Maze Builder generation, coordinate, footprint, exit, seed, checkpoint, and self-spin rules.
 
 For `web-maze-builder`, always run:
 
 ```bash
-cd web-maze-builder
+cd web/web-maze-builder
 npm test
 npm run build
 ```
 
-Prefer relative paths (for example, `cd web-maze-builder`) so instructions work across different machines.
+Prefer relative paths (for example, `cd web/web-maze-builder`) so instructions work across different machines.
