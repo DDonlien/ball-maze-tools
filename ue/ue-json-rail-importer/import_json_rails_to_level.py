@@ -572,11 +572,22 @@ def _layout_rails(layout: dict) -> List[dict]:
     return rails
 
 
+def _rail_index(rail: dict, fallback_index: int = -1) -> str:
+    for key in ("Rail_Index", "Index", "RailIndex"):
+        value = rail.get(key)
+        if value is not None and value != "":
+            return str(value)
+    if fallback_index >= 0:
+        return str(fallback_index)
+    return "?"
+
+
 def _rail_id(rail: dict) -> str:
     value = rail.get("Rail_ID") or rail.get("RailID") or rail.get("Name")
     if not isinstance(value, str) or not value.strip():
         raise RuntimeError(f"Rail entry is missing Rail_ID/RailID/Name: {rail}")
     return value.strip()
+
 
 
 def _log_reference_report(report: dict) -> None:
@@ -1270,12 +1281,12 @@ def import_json_rails(layout_json: Optional[Path] = None, rail_config_csv: Path 
     with unreal.ScopedSlowTask(max(1, total_refs), "Importing JSON rails...") as task:
         task.make_dialog(True)
 
-        for rail in importable_rails:
+        for index, rail in enumerate(importable_rails):
             if task.should_cancel():
                 break
 
             rail_id = _rail_id(rail)
-            rail_index = rail.get("Rail_Index", "?")
+            rail_index = _rail_index(rail, index)
             location = _rail_location(rail)
             rotation = _rail_rotation(rail)
 
