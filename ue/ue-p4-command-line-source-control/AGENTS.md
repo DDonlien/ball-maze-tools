@@ -35,9 +35,26 @@
 ## 文件模板
 
 新增 C++ 文件时遵循现有结构：
-- 头文件 → `Source/P4CommandLineSourceControl/Public/`
-- 实现文件 → `Source/P4CommandLineSourceControl/Private/`
+- 头文件 → `P4CommandLineSourceControl/Source/P4CommandLineSourceControl/Public/`
+- 实现文件 → `P4CommandLineSourceControl/Source/P4CommandLineSourceControl/Private/`
 - 命名前缀：`FP4CommandLine` (类), `UP4CommandLine` (UObject)
+
+### 仓库目录结构
+
+```
+ue-p4-command-line-source-control/
+├── P4CommandLineSourceControl/           ← UE 插件资产（可复制到项目 Plugins/）
+│   ├── P4CommandLineSourceControl.uplugin
+│   └── Source/
+│       └── P4CommandLineSourceControl/
+│           ├── Public/
+│           └── Private/
+├── agent-log/                           ← AI 执行日志
+├── README.md
+├── AGENTS.md
+├── REQUIREMENTS.md
+└── DESIGN.md
+```
 
 ## 日志记录
 
