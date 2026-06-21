@@ -35,11 +35,15 @@ void FP4CommandLineSourceControlProvider::Close()
     StateCache.Empty();
 }
 
-FText FP4CommandLineSourceControlProvider::GetStatusText() const
+    FText FP4CommandLineSourceControlProvider::GetStatusText() const
 {
     if (IsAvailable())
     {
         return LOCTEXT("P4CommandLineAvailable", "Connected to Perforce (CLI)");
+    }
+    if (!LastErrorMessage.IsEmpty())
+    {
+        return FText::Format(LOCTEXT("P4CommandLineUnavailableWithError", "Not connected to Perforce (CLI): {0}"), FText::FromString(LastErrorMessage));
     }
     return LOCTEXT("P4CommandLineUnavailable", "Not connected to Perforce (CLI)");
 }
@@ -320,6 +324,9 @@ TArray<FSourceControlChangelistRef> FP4CommandLineSourceControlProvider::GetChan
 }
 
 #if SOURCE_CONTROL_WITH_SLATE
+#include "Framework/Notifications/NotificationManager.h"
+#include "Widgets/Notifications/SNotificationList.h"
+
 TSharedRef<class SWidget> FP4CommandLineSourceControlProvider::MakeSettingsWidget() const
 {
     return SNew(STextBlock).Text(LOCTEXT("SettingsPlaceholder", "P4 CLI Settings (configure via Project Settings or .p4config)"));
@@ -336,7 +343,34 @@ bool FP4CommandLineSourceControlProvider::CheckP4Availability()
     bSourceControlAvailable = FP4CommandLineSourceControlUtils::RunP4Command(TEXT("info"), TEXT(""), P4Port, P4User, P4Client, P4Password, P4ExecutablePath, Results, Errors, ReturnCode) && (ReturnCode == 0);
     if (!bSourceControlAvailable)
     {
+        if (Errors.Contains(TEXT("not found")) || Errors.Contains(TEXT("No such file")))
+        {
+            LastErrorMessage = TEXT("p4 executable not found. Please install Perforce CLI or set P4 Executable Path in Project Settings > Plugins > P4 Command Line Source Control.");
+        }
+        else if (Errors.Contains(TEXT("Connect to server failed")) || Errors.Contains(TEXT("TCP connect to")))
+        {
+            LastErrorMessage = FString::Printf(TEXT("Cannot connect to Perforce server at %s. Check P4Port/P4User/P4Client settings."), *P4Port);
+        }
+        else if (Errors.IsEmpty())
+        {
+            LastErrorMessage = TEXT("Unknown connection failure (no stderr). Check Output Log (LogP4CommandLine) for details.");
+        }
+        else
+        {
+            LastErrorMessage = Errors.Left(200); // truncate to avoid massive text
+        }
         UE_LOG(LogP4CommandLine, Warning, TEXT("P4CommandLine: Failed to connect. Port=%s User=%s Client=%s Error=%s"), *P4Port, *P4User, *P4Client, *Errors);
+#if SOURCE_CONTROL_WITH_SLATE
+        FNotificationInfo Info(FText::FromString(LastErrorMessage));
+        Info.bFireAndForget = true;
+        Info.ExpireDuration = 15.0f;
+        Info.bUseSuccessFailIcons = true;
+        FSlateNotificationManager::Get().AddNotification(Info);
+#endif
+    }
+    else
+    {
+        LastErrorMessage.Empty();
     }
     return bSourceControlAvailable;
 }

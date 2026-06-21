@@ -59,4 +59,5 @@ private:
     TMap<FString, TSharedRef<FP4CommandLineSourceControlState>> StateCache;
     FSourceControlStateChanged OnSourceControlStateChanged;
     TStrongObjectPtr<UP4CommandLineSourceControlSettings> Settings;
+    FString LastErrorMessage;
 };
