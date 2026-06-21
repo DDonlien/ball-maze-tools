@@ -49,18 +49,18 @@ bool FP4CommandLineSourceControlCommand::RunCommand()
     
     Results = FPlatformProcess::ReadPipe(ReadPipe);
     
-    int32 ReturnCode = 0;
-    FPlatformProcess::GetProcReturnCode(ProcessHandle, &ReturnCode);
-    this->ReturnCode = ReturnCode;
+    int32 OutReturnCode = 0;
+    FPlatformProcess::GetProcReturnCode(ProcessHandle, &OutReturnCode);
+    this->ReturnCode = OutReturnCode;
     
     FPlatformProcess::CloseProc(ProcessHandle);
     FPlatformProcess::ClosePipe(ReadPipe, WritePipe);
     
-    if (ReturnCode != 0)
+    if (OutReturnCode != 0)
     {
         Errors = Results;
         Results.Empty();
     }
     
-    return ReturnCode == 0;
+    return OutReturnCode == 0;
 }

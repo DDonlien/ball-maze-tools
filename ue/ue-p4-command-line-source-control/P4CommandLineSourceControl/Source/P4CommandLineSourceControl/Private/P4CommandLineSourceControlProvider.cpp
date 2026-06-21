@@ -2,7 +2,6 @@
 #include "P4CommandLineSourceControlState.h"
 #include "P4CommandLineSourceControlUtils.h"
 #include "P4CommandLineSourceControlSettings.h"
-#include "SourceControlModule.h"
 #include "SourceControlOperations.h"
 #include "Misc/Paths.h"
 #include "Widgets/Text/STextBlock.h"
@@ -198,7 +197,7 @@ ECommandResult::Type FP4CommandLineSourceControlProvider::Execute(const FSourceC
         }
         bSuccess = FP4CommandLineSourceControlUtils::RunP4Command(TEXT("revert"), FString::Printf(TEXT("-k %s"), *FileList), Results, Errors, ReturnCode);
     }
-    else if (InOperation->GetName() == FAdd::GetName())
+    else if (InOperation->GetName() == FMarkForAdd::GetName())
     {
         FString FileList;
         for (const FString& File : InFiles)
@@ -216,24 +215,6 @@ ECommandResult::Type FP4CommandLineSourceControlProvider::Execute(const FSourceC
         }
         bSuccess = FP4CommandLineSourceControlUtils::RunP4Command(TEXT("delete"), FileList, Results, Errors, ReturnCode);
     }
-    else if (InOperation->GetName() == FMove::GetName())
-    {
-        if (InFiles.Num() >= 2)
-        {
-            FString Source = FP4CommandLineSourceControlUtils::SanitizeFilename(InFiles[0]);
-            FString Destination = FP4CommandLineSourceControlUtils::SanitizeFilename(InFiles[1]);
-            bSuccess = FP4CommandLineSourceControlUtils::RunP4Command(TEXT("move"), FString::Printf(TEXT("%s %s"), *Source, *Destination), Results, Errors, ReturnCode);
-        }
-    }
-    else if (InOperation->GetName() == FSync::GetName())
-    {
-        FString FileList;
-        for (const FString& File : InFiles)
-        {
-            FileList += FString::Printf(TEXT("%s "), *FP4CommandLineSourceControlUtils::SanitizeFilename(File));
-        }
-        bSuccess = FP4CommandLineSourceControlUtils::RunP4Command(TEXT("sync"), FileList, Results, Errors, ReturnCode);
-    }
     else if (InOperation->GetName() == FCheckIn::GetName())
     {
         FCheckIn* CheckIn = InOperation->GetOperation<FCheckIn>();
@@ -249,15 +230,6 @@ ECommandResult::Type FP4CommandLineSourceControlProvider::Execute(const FSourceC
             bSuccess = FP4CommandLineSourceControlUtils::RunP4Command(TEXT("submit"), Parameters, Results, Errors, ReturnCode);
         }
     }
-    else if (InOperation->GetName() == FHistory::GetName())
-    {
-        bSuccess = true; // Handled through GetState
-    }
-    else if (InOperation->GetName() == FAnnotate::GetName())
-    {
-        bSuccess = true; // Handled through GetState
-    }
-
     ECommandResult::Type Result = bSuccess ? ECommandResult::Succeeded : ECommandResult::Failed;
     InOperationCompleteDelegate.ExecuteIfBound(InOperation, Result);
     return Result;
