@@ -158,7 +158,7 @@ ECommandResult::Type FP4CommandLineSourceControlProvider::Execute(const FSourceC
     FString Results, Errors;
     int32 ReturnCode = 0;
 
-    if (InOperation->GetName() == FUpdateStatus::GetName())
+    if (InOperation->GetName() == FName("UpdateStatus"))
     {
         FString FileList;
         for (const FString& File : InFiles)
@@ -179,7 +179,7 @@ ECommandResult::Type FP4CommandLineSourceControlProvider::Execute(const FSourceC
             OnSourceControlStateChanged.Broadcast();
         }
     }
-    else if (InOperation->GetName() == FCheckOut::GetName())
+    else if (InOperation->GetName() == FName("CheckOut"))
     {
         FString FileList;
         for (const FString& File : InFiles)
@@ -188,7 +188,7 @@ ECommandResult::Type FP4CommandLineSourceControlProvider::Execute(const FSourceC
         }
         bSuccess = FP4CommandLineSourceControlUtils::RunP4Command(TEXT("edit"), FileList, Results, Errors, ReturnCode);
     }
-    else if (InOperation->GetName() == FRevert::GetName())
+    else if (InOperation->GetName() == FName("Revert"))
     {
         FString FileList;
         for (const FString& File : InFiles)
@@ -197,7 +197,7 @@ ECommandResult::Type FP4CommandLineSourceControlProvider::Execute(const FSourceC
         }
         bSuccess = FP4CommandLineSourceControlUtils::RunP4Command(TEXT("revert"), FString::Printf(TEXT("-k %s"), *FileList), Results, Errors, ReturnCode);
     }
-    else if (InOperation->GetName() == FMarkForAdd::GetName())
+    else if (InOperation->GetName() == FName("MarkForAdd"))
     {
         FString FileList;
         for (const FString& File : InFiles)
@@ -206,7 +206,7 @@ ECommandResult::Type FP4CommandLineSourceControlProvider::Execute(const FSourceC
         }
         bSuccess = FP4CommandLineSourceControlUtils::RunP4Command(TEXT("add"), FileList, Results, Errors, ReturnCode);
     }
-    else if (InOperation->GetName() == FDelete::GetName())
+    else if (InOperation->GetName() == FName("Delete"))
     {
         FString FileList;
         for (const FString& File : InFiles)
@@ -215,9 +215,9 @@ ECommandResult::Type FP4CommandLineSourceControlProvider::Execute(const FSourceC
         }
         bSuccess = FP4CommandLineSourceControlUtils::RunP4Command(TEXT("delete"), FileList, Results, Errors, ReturnCode);
     }
-    else if (InOperation->GetName() == FCheckIn::GetName())
+    else if (InOperation->GetName() == FName("CheckIn"))
     {
-        FCheckIn* CheckIn = InOperation->GetOperation<FCheckIn>();
+        FCheckIn* CheckIn = static_cast<FCheckIn*>(InOperation.Get());
         if (CheckIn)
         {
             FString Description = CheckIn->GetDescription().ToString();

@@ -267,7 +267,7 @@ bool FP4CommandLineSourceControlUtils::RunP4Command(const FString& InCommand, co
     
     OutResults = FPlatformProcess::ReadPipe(ReadPipe);
     
-    FPlatformProcess::GetProcReturnCode(ProcessHandle, OutReturnCode);
+    FPlatformProcess::GetProcReturnCode(ProcessHandle, &OutReturnCode);
     
     FPlatformProcess::CloseProc(ProcessHandle);
     FPlatformProcess::ClosePipe(ReadPipe, WritePipe);
