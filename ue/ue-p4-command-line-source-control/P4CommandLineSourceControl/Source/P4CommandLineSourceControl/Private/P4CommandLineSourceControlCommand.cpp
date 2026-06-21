@@ -50,7 +50,7 @@ bool FP4CommandLineSourceControlCommand::RunCommand()
     Results = FPlatformProcess::ReadPipe(ReadPipe);
     
     int32 ReturnCode = 0;
-    FPlatformProcess::GetProcReturnCode(ProcessHandle, ReturnCode);
+    FPlatformProcess::GetProcReturnCode(ProcessHandle, &ReturnCode);
     this->ReturnCode = ReturnCode;
     
     FPlatformProcess::CloseProc(ProcessHandle);

@@ -5,6 +5,8 @@
 #include "ISourceControlRevision.h"
 #include "Misc/DateTime.h"
 
+class FP4CommandLineSourceControlRevision;
+
 class FP4CommandLineSourceControlState : public ISourceControlState
 {
 public:
@@ -77,5 +79,5 @@ public:
     bool bCanCheckIn;
     bool bCanDiffAgainstWorkspace;
     FResolveInfo ResolveInfo;
-    TArray<FSourceControlRevisionRef> History;
+    TArray<TSharedRef<FP4CommandLineSourceControlRevision, ESPMode::ThreadSafe>> History;
 };

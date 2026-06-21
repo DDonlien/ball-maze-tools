@@ -1,24 +1,19 @@
 #include "P4CommandLineSourceControlModule.h"
 #include "P4CommandLineSourceControlProvider.h"
 #include "Modules/ModuleManager.h"
-#include "SourceControlModule.h"
+#include "Features/IModularFeatures.h"
 
 #define LOCTEXT_NAMESPACE "P4CommandLineSourceControl"
 
 void FP4CommandLineSourceControlModule::StartupModule()
 {
-    SourceControlProvider = MakeShareable(new FP4CommandLineSourceControlProvider());
-
-    FSourceControlModule& SourceControlModule = FSourceControlModule::Get();
-    SourceControlModule.RegisterProvider(FName("P4CommandLine"), SourceControlProvider);
+    IModularFeatures::Get().RegisterModularFeature("SourceControl", &SourceControlProvider);
 }
 
 void FP4CommandLineSourceControlModule::ShutdownModule()
 {
-    FSourceControlModule& SourceControlModule = FSourceControlModule::Get();
-    SourceControlModule.UnregisterProvider(FName("P4CommandLine"));
-
-    SourceControlProvider.Reset();
+    IModularFeatures::Get().UnregisterModularFeature("SourceControl", &SourceControlProvider);
+    SourceControlProvider.Close();
 }
 
 IMPLEMENT_MODULE(FP4CommandLineSourceControlModule, P4CommandLineSourceControl)

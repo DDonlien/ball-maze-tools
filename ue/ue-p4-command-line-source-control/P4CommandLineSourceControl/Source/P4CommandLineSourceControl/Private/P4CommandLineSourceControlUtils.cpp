@@ -92,7 +92,7 @@ bool FP4CommandLineSourceControlUtils::ParseStatusResult(const FString& InResult
     return true;
 }
 
-bool FP4CommandLineSourceControlUtils::ParseFileLogResult(const FString& InResults, TArray<FSourceControlRevisionRef>& OutRevisions)
+bool FP4CommandLineSourceControlUtils::ParseFileLogResult(const FString& InResults, TArray<TSharedRef<FP4CommandLineSourceControlRevision, ESPMode::ThreadSafe>>& OutRevisions)
 {
     TArray<FString> Lines;
     InResults.ParseIntoArray(Lines, TEXT("\n"), true);
@@ -194,10 +194,7 @@ bool FP4CommandLineSourceControlUtils::ParseAnnotateResult(const FString& InResu
             int32 Revision = FCString::Atoi(*RevStr);
             FString Content = Trimmed.Mid(TabIndex + 1);
             
-            FAnnotationLine AnnotationLine;
-            AnnotationLine.Change = Revision;
-            AnnotationLine.Line = Content;
-            OutLines.Add(AnnotationLine);
+            FAnnotationLine AnnotationLine(Revision, TEXT(""), Content);
         }
     }
     

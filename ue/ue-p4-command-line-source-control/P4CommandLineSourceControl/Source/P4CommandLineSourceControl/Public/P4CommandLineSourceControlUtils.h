@@ -8,7 +8,7 @@ class FP4CommandLineSourceControlUtils
 {
 public:
     static bool ParseStatusResult(const FString& InResults, TArray<FSourceControlStateRef>& OutStates);
-    static bool ParseFileLogResult(const FString& InResults, TArray<FSourceControlRevisionRef>& OutRevisions);
+    static bool ParseFileLogResult(const FString& InResults, TArray<TSharedRef<FP4CommandLineSourceControlRevision, ESPMode::ThreadSafe>>& OutRevisions);
     static bool ParseAnnotateResult(const FString& InResults, TArray<FAnnotationLine>& OutLines);
     static bool ParseInfoResult(const FString& InResults, FString& OutUserName, FString& OutClientName, FString& OutServerAddress);
 

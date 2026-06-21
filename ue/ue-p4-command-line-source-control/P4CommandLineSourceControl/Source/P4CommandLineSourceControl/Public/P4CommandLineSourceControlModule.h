@@ -2,9 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Modules/ModuleInterface.h"
-#include "Modules/ModuleManager.h"
-
-class ISourceControlProvider;
+#include "P4CommandLineSourceControlProvider.h"
 
 class FP4CommandLineSourceControlModule : public IModuleInterface
 {
@@ -13,5 +11,5 @@ public:
     virtual void ShutdownModule() override;
 
 private:
-    TSharedPtr<ISourceControlProvider> SourceControlProvider;
+    FP4CommandLineSourceControlProvider SourceControlProvider;
 };
