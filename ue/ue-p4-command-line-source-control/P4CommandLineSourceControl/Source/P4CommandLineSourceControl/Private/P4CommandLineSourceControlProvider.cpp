@@ -217,7 +217,7 @@ ECommandResult::Type FP4CommandLineSourceControlProvider::Execute(const FSourceC
     }
     else if (InOperation->GetName() == FName("CheckIn"))
     {
-        FCheckIn* CheckIn = static_cast<FCheckIn*>(InOperation.Get());
+        FCheckIn* CheckIn = static_cast<FCheckIn*>(&InOperation.Get());
         if (CheckIn)
         {
             FString Description = CheckIn->GetDescription().ToString();
